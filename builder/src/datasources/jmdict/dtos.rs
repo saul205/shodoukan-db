@@ -58,14 +58,18 @@ pub struct SenseDto {
     pub examples: Vec<ExampleDto>
 }
 
+fn default_lang() -> String {
+    String::from("eng")
+}
+
 #[derive(Deserialize)]
 pub struct GlossDto {
     #[serde(rename = "$value")]
     pub text: String,
     #[serde(rename = "@g_type", default)]
     pub type_: Option<String>,
-    //#[serde(rename = "lang")]
-    //lang: Option<String>
+    #[serde(rename = "@xml:lang", default = "default_lang")]
+    pub lang: String,
 }
 
 #[derive(Deserialize)]

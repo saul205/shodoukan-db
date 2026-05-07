@@ -25,3 +25,9 @@ target
 
 /target
 .vscode
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db3
