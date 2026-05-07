@@ -1,0 +1,11 @@
+[workspace]
+# This tells Cargo which directories to look in for sub-packages
+members = [
+    "core",
+    "builder",
+]
+
+# This is the modern version of the Cargo feature resolver
+resolver = "2"
+
+[workspace.dependencies]

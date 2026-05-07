@@ -1,0 +1,1 @@
+let db: DatabaseConnection = Database::connect("sqlite://db.sqlite?mode=rwc").await?;
