@@ -55,6 +55,15 @@ SQLite (core)
 
 SQLite does not need to be installed separately — the project uses a bundled version.
 
+## CI/CD
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| `ci.yml` | Push to `main`, every PR | Runs `cargo test` |
+| `release.yml` | 1st of every month (or manual) | Builds `shodoukan.sqlite` and publishes it as a GitHub Release asset |
+
+The database artifact is available under **Releases** with tags like `db-2026-05-09`. You can also trigger a build manually from the Actions tab.
+
 ## Installation
 
 ```bash
