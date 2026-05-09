@@ -41,13 +41,6 @@ impl<'a> EntryRepository<'a> {
             )?;
             let kr_id = self.conn.last_insert_rowid();
 
-            for ch in kr.kanji.chars().filter(|c| is_cjk(*c)) {
-                self.conn.execute(
-                    "INSERT OR IGNORE INTO entry_kanji (entry_id, literal) VALUES (?1, ?2)",
-                    params![entry.id, ch.to_string()],
-                )?;
-            }
-
             for r in &kr.restricted_readings {
                 if let Some(&r_id) = reading_ids.get(r.text.as_str()) {
                     self.conn.execute(
@@ -147,16 +140,66 @@ impl<'a> KanjiRepository<'a> {
     }
 }
 
+// ── Entry-Kanji Relations ─────────────────────────────────────────────────────
+
+pub fn build_entry_kanji_relations(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT entry_id, kanji, priority FROM kanji_readings",
+    )?;
+
+    let rows: Vec<(i64, String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<_>>()?;
+
+    let mut scores: HashMap<(i64, String), i32> = HashMap::new();
+    for (entry_id, kanji, priority_json) in rows {
+        let priorities: Vec<String> =
+            serde_json::from_str(&priority_json).unwrap_or_default();
+        let score: i32 = priorities.iter().map(|p| score_priority(p)).sum();
+
+        for ch in kanji.chars().filter(|c| is_cjk(*c)) {
+            let best = scores.entry((entry_id, ch.to_string())).or_insert(0);
+            *best = (*best).max(score);
+        }
+    }
+
+    for ((entry_id, literal), score) in scores {
+        conn.execute(
+            "INSERT OR REPLACE INTO entry_kanji (entry_id, literal, priority_score)
+             VALUES (?1, ?2, ?3)",
+            params![entry_id, literal, score],
+        )?;
+    }
+
+    Ok(())
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn json(v: &[String]) -> String {
     serde_json::to_string(v).unwrap_or_else(|_| String::from("[]"))
 }
 
+fn score_priority(p: &str) -> i32 {
+    match p {
+        "ichi1" => 1000,
+        "ichi2" =>  500,
+        "news1" =>  400,
+        "news2" =>  200,
+        "spec1" =>  300,
+        "spec2" =>  150,
+        "gai1"  =>  100,
+        "gai2"  =>   50,
+        s if s.starts_with("nf") =>
+            s[2..].parse::<i32>().map(|n| 200 - n * 4).unwrap_or(0),
+        _ => 0,
+    }
+}
+
 fn is_cjk(c: char) -> bool {
     matches!(c,
-        '\u{4E00}'..='\u{9FFF}' |   // CJK Unified Ideographs
-        '\u{3400}'..='\u{4DBF}' |   // CJK Extension A
-        '\u{F900}'..='\u{FAFF}'     // CJK Compatibility Ideographs
+        '\u{4E00}'..='\u{9FFF}' |
+        '\u{3400}'..='\u{4DBF}' |
+        '\u{F900}'..='\u{FAFF}'
     )
 }

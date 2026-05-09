@@ -1,5 +1,8 @@
 use builder::{datasources::{jmdict::parser::JMDictSource, kanjidic::parser::KanjiDicSource}, traits::datasource::Datasource};
-use core::infrastructure::sqlite::{connection, repository::{EntryRepository, KanjiRepository}};
+use core::infrastructure::sqlite::{
+    connection,
+    repository::{build_entry_kanji_relations, EntryRepository, KanjiRepository},
+};
 
 fn main() {
     let jmdict = JMDictSource {
@@ -40,6 +43,13 @@ fn main() {
         tx.commit().expect("failed to commit entries transaction");
     }
     println!("Inserted {} entries", entries.len());
+
+    {
+        let tx = conn.transaction().expect("failed to begin transaction");
+        build_entry_kanji_relations(&tx).expect("failed to build entry-kanji relations");
+        tx.commit().expect("failed to commit entry-kanji transaction");
+    }
+    println!("Built entry-kanji relations");
 
     println!("Database built: {}", db_path);
 }
