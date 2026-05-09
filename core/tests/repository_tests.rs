@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use core::domain::models::entry::{
     CrossReference, Entry, Example, Gloss, KanjiReading, Reading, Sense, Source,
 };
-use core::infrastructure::sqlite::{connection, repository::EntryRepository};
+use core::infrastructure::sqlite::{connection, repository::{build_entry_kanji_relations, EntryRepository}};
 
 fn sample_entry() -> Entry {
     Entry {
@@ -213,4 +213,42 @@ fn insert_stores_cross_references() {
     assert_eq!(reference, "食べる");
     assert_eq!(reading, "たべる");
     assert_eq!(sense_idx, 1);
+}
+
+#[test]
+fn build_entry_kanji_relations_links_cjk_chars() {
+    let conn = connection::open_in_memory().unwrap();
+    let repo = EntryRepository::new(&conn);
+
+    repo.insert(&sample_entry()).unwrap();
+    build_entry_kanji_relations(&conn).unwrap();
+
+    // 食べ物 contains 食 and 物 (べ is hiragana, not CJK)
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM entry_kanji WHERE entry_id = 1000001",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 2);
+}
+
+#[test]
+fn build_entry_kanji_relations_stores_priority_score() {
+    let conn = connection::open_in_memory().unwrap();
+    let repo = EntryRepository::new(&conn);
+
+    repo.insert(&sample_entry()).unwrap();
+    build_entry_kanji_relations(&conn).unwrap();
+
+    // sample_entry has priority ["ichi1"] → score 1000
+    let score: i64 = conn
+        .query_row(
+            "SELECT priority_score FROM entry_kanji WHERE entry_id = 1000001 AND literal = '食'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(score, 1000);
 }

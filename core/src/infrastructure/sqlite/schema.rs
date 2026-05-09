@@ -117,8 +117,9 @@ pub const CREATE_SCHEMA: &str = "
     END;
 
     CREATE TABLE IF NOT EXISTS entry_kanji (
-        entry_id INTEGER NOT NULL REFERENCES entries(id),
-        literal  TEXT    NOT NULL,
+        entry_id       INTEGER NOT NULL REFERENCES entries(id),
+        literal        TEXT    NOT NULL,
+        priority_score INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (entry_id, literal)
     );
     CREATE INDEX IF NOT EXISTS idx_entry_kanji_literal ON entry_kanji(literal);
