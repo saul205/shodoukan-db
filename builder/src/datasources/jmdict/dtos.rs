@@ -64,8 +64,8 @@ fn default_lang() -> String {
 
 #[derive(Deserialize)]
 pub struct GlossDto {
-    #[serde(rename = "$value")]
-    pub text: String,
+    #[serde(rename = "$value", default)]
+    pub text: Option<String>,
     #[serde(rename = "@g_type", default)]
     pub type_: Option<String>,
     #[serde(rename = "@xml:lang", default = "default_lang")]
@@ -94,6 +94,6 @@ pub struct SentenceDto {
 pub struct SourceDto {
     #[serde(rename = "@exsrc_type")]
     pub name: String,
-    #[serde(rename = "$value")]
+    #[serde(rename = "$value", default)]
     pub id: Option<String>
 }
