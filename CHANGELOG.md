@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [Unreleased]
+
+### Planned
+- Query interface (API or CLI)
+- Search by reading, kanji, or meaning
+- Hyperlinks between entries and individual kanji characters
+
+---
+
 ## [0.4.0] — 2026-05-15 — JLPT enrichment + test infrastructure + docs
 
 ### Added

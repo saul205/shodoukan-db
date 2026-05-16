@@ -2,9 +2,9 @@
 
 A Japanese-English dictionary database built in Rust. Downloads and parses [JMDict](https://www.edrdg.org/jmdict/j_jmdict.html) and [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project) from EDRDG, enriches entries with JLPT levels, and stores everything in a local SQLite database optimised for fast lookups and full-text search.
 
-## Project structure
+## Architecture
 
-Cargo workspace with two crates:
+The project is a Cargo workspace with two crates:
 
 ```
 shodoukan-db/

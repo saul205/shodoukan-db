@@ -4,7 +4,7 @@ use std::io::BufReader;
 use builder::datasources::jmdict::parser::JMDictSource;
 use builder::datasources::kanjidic::parser::KanjiDicSource;
 use builder::traits::datasource::Datasource;
-use core::infrastructure::sqlite::{connection, repository::{EntryRepository, KanjiRepository}};
+use core::infrastructure::sqlite::{connection, repository::{EntryRepository, KanjiRepository, build_entry_kanji_relations}};
 
 const JMDICT_FIXTURE: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/jmdict_sample.xml");
@@ -145,6 +145,7 @@ fn jmdict_entry_kanji_junction_populated_for_cjk_entries() {
     for entry in &entries {
         repo.insert(entry).unwrap();
     }
+    build_entry_kanji_relations(&conn).unwrap();
 
     // 明白 contains 明 (U+660E) and 白 (U+767D), both CJK Unified Ideographs
     let count: i64 = conn
@@ -316,6 +317,7 @@ fn populated_db() -> rusqlite::Connection {
     for e in &parse_jmdict() {
         entry_repo.insert(e).unwrap();
     }
+    build_entry_kanji_relations(&conn).unwrap();
     conn
 }
 

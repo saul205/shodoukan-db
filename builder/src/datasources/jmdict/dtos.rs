@@ -86,7 +86,7 @@ pub struct ExampleDto {
 pub struct SentenceDto {
     #[serde(rename = "@xml:lang")]
     pub lang: String,
-    #[serde(rename = "$value")]
+    #[serde(rename = "$value", default)]
     pub text: String
 }
 
