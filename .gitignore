@@ -31,3 +31,7 @@ target
 *.sqlite
 *.sqlite3
 *.db3
+
+# Claude
+.claude
+CLAUDE.md

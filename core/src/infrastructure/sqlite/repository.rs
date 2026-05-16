@@ -15,9 +15,37 @@ impl<'a> EntryRepository<'a> {
     }
 
     pub fn insert(&self, entry: &Entry) -> Result<()> {
-        self.conn.execute("INSERT INTO entries (id) VALUES (?1)", [entry.id])?;
+        self.conn.execute(
+            "INSERT INTO entries (id, jlpt) VALUES (?1, ?2)",
+            params![entry.id, entry.jlpt],
+        )?;
         self.insert_readings(entry)?;
         self.insert_senses(entry)?;
+        Ok(())
+    }
+
+    pub fn update_entry_jlpt(&self, key: &str, reading: &str, level: u8) -> Result<()> {
+        if key.chars().any(is_cjk) {
+            self.conn.execute(
+                "UPDATE entries
+                 SET jlpt = CASE WHEN jlpt IS NULL OR ?1 < jlpt THEN ?1 ELSE jlpt END
+                 WHERE id IN (
+                     SELECT DISTINCT kr.entry_id FROM kanji_readings kr
+                     JOIN readings r ON r.entry_id = kr.entry_id
+                     WHERE kr.kanji = ?2 AND r.text = ?3
+                 )",
+                params![level, key, reading],
+            )?;
+        } else {
+            self.conn.execute(
+                "UPDATE entries
+                 SET jlpt = CASE WHEN jlpt IS NULL OR ?1 < jlpt THEN ?1 ELSE jlpt END
+                 WHERE id IN (
+                     SELECT DISTINCT entry_id FROM readings WHERE text = ?2
+                 )",
+                params![level, key],
+            )?;
+        }
         Ok(())
     }
 
@@ -110,6 +138,16 @@ pub struct KanjiRepository<'a> {
 impl<'a> KanjiRepository<'a> {
     pub fn new(conn: &'a Connection) -> Self {
         Self { conn }
+    }
+
+    pub fn update_jlpt(&self, literal: &str, level: u8) -> Result<()> {
+        self.conn.execute(
+            "UPDATE kanji
+             SET jlpt = CASE WHEN jlpt IS NULL OR ?1 < jlpt THEN ?1 ELSE jlpt END
+             WHERE literal = ?2",
+            params![level, literal],
+        )?;
+        Ok(())
     }
 
     pub fn insert(&self, kanji: &Kanji) -> Result<()> {

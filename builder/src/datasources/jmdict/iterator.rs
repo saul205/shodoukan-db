@@ -49,7 +49,21 @@ impl<R: BufRead> Iterator for JMDictIterator<R> {
                         w.write_event(Event::End(e.clone().into_owned())).unwrap();
                         let xml = String::from_utf8(w.into_inner().into_inner()).unwrap();
                         let xml = self.resolve_entities(xml);
-                        return Some(from_str(&xml).unwrap());
+                        match from_str(&xml) {
+                            Ok(entry) => return Some(entry),
+                            Err(err) => {
+                                let id = xml
+                                    .find("<ent_seq>")
+                                    .and_then(|s| {
+                                        let rest = &xml[s + 9..];
+                                        rest.find("</ent_seq>").map(|e| &rest[..e])
+                                    })
+                                    .unwrap_or("unknown");
+                                eprintln!("Skipping entry id={id} — {err}");
+                                entry_writer = None;
+                                continue;
+                            }
+                        }
                     }
                     return None;
                 }

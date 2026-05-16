@@ -1,126 +1,93 @@
 # shodoukan
 
-A Japanese-English dictionary written in Rust. Downloads the public [JMDict](https://www.edrdg.org/jmdict/j_jmdict.html) and [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project) datasets, processes them, and stores the result in a local SQLite database ready for fast lookups.
+A Japanese-English dictionary database built in Rust. Downloads and parses [JMDict](https://www.edrdg.org/jmdict/j_jmdict.html) and [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project) from EDRDG, enriches entries with JLPT levels, and stores everything in a local SQLite database optimised for fast lookups and full-text search.
 
 ## Architecture
 
 The project is a Cargo workspace with two crates:
 
 ```
-shodoukan/
-├── core/       # Domain models and SQLite infrastructure
-└── builder/    # Binary: downloads, parses, and ingests the data
+shodoukan-db/
+├── core/                        # Library: domain models + SQLite infrastructure
+│   ├── src/
+│   │   ├── domain/models/
+│   │   │   ├── entry.rs         # Entry, KanjiReading, Reading, Sense, Gloss, Example
+│   │   │   └── kanji.rs         # Kanji, Meaning
+│   │   └── infrastructure/sqlite/
+│   │       ├── connection.rs    # DB connection setup
+│   │       ├── schema.rs        # DDL: tables, indexes, FTS5 triggers
+│   │       └── repository.rs   # EntryRepository, KanjiRepository
+│   └── tests/                   # Integration tests (in-memory SQLite)
+└── builder/                     # Binary: download → parse → insert pipeline
+    ├── src/
+    │   ├── datasources/
+    │   │   ├── jmdict/          # JMDict parser, DTOs, iterator, mappers
+    │   │   ├── kanjidic/        # KANJIDIC2 parser, DTOs, iterator, mappers
+    │   │   └── jlpt/            # JLPT level data fetcher and DTOs
+    │   ├── traits/datasource.rs # Datasource<T> trait (fetch + parse)
+    │   └── main.rs              # Pipeline entry point
+    └── tests/                   # Unit tests for DTO → domain mappers
 ```
 
 ### `core`
 
-Shared library with two layers:
+Shared library crate with two layers:
 
-- **Domain** (`core::domain::models`): plain data structures representing dictionary entries and kanji. No external dependencies.
-- **Infrastructure** (`core::infrastructure::sqlite`): database logic — schema, connection, and repositories.
+- **Domain models** (`core::domain::models`): `Entry`, `KanjiReading`, `Reading`, `Sense`, `Gloss`, `Example`, `CrossReference`, `Source`, `Kanji`, `Meaning`
+- **SQLite infrastructure** (`core::infrastructure::sqlite`): schema DDL, `EntryRepository`, `KanjiRepository`
 
 ### `builder`
 
-Binary that runs the full data pipeline:
+Binary crate that runs the full ingestion pipeline:
 
-1. Downloads `JMdict.gz` and `kanjidic2.xml.gz` from the EDRDG servers.
-2. Decompresses the gzip archives in memory.
-3. Parses the XML incrementally (one element at a time) to avoid loading everything into memory.
-4. Converts each XML element into a domain model.
-5. Inserts all data into SQLite inside transactions.
-6. Builds a kanji–entry index with frequency scoring.
+1. Downloads and parses **JMDict** (~400k entries: words, readings, senses, glosses, examples)
+2. Downloads and parses **KANJIDIC2** (~13k kanji: readings, meanings, grade, stroke count, frequency)
+3. Downloads **JLPT vocabulary and kanji lists** and uses them to set JLPT levels on entries and kanji
+4. Creates `shodoukan.sqlite`, inserts all data in transactional bulk operations
+5. Populates `entry_kanji` junction table by extracting CJK codepoints from kanji forms
 
-### Data flow
-
-```
-HTTP (JMDict / KANJIDIC2)
-    │
-    ▼
-Gzip decompression
-    │
-    ▼
-Streaming XML parser
-    │
-    ▼
-DTO → Domain model
-    │
-    ▼
-SQLite (core)
-```
-
-## Requirements
-
-- [Rust](https://rustup.rs/) 1.85 or later (2024 edition)
-- Internet connection (to download the datasets, ~25 MB total)
-
-SQLite does not need to be installed separately — the project uses a bundled version.
-
-## CI/CD
-
-| Workflow | Trigger | What it does |
-|----------|---------|--------------|
-| `ci.yml` | Push to `main`, every PR | Runs `cargo test` |
-| `release.yml` | 1st of every month (or manual) | Builds `shodoukan.sqlite` and publishes it as a GitHub Release asset |
-
-The database artifact is available under **Releases** with tags like `db-2026-05-09`. You can also trigger a build manually from the Actions tab.
-
-## Installation
-
-```bash
-git clone <repository-url>
-cd shodoukan
-cargo build
-```
-
-## Running
-
-```bash
-cargo run -p builder
-```
-
-The process takes a few minutes. When finished, it produces `shodoukan.sqlite` in the project root.
-
-```
-Fetching JMDict...
-Downloading JMDict...
-Decompressing JMDict...
-Loaded 266 entity definitions
-Fetching KANJIDIC2...
-...
-Inserted 13108 kanji
-Inserted 401804 entries
-Built entry-kanji relations
-Database built: shodoukan.sqlite
-```
-
-> `shodoukan.sqlite` is not tracked by git. It must be generated locally.
-
-## Tests
-
-```bash
-cargo test
-```
-
-Includes unit tests for the mappers and integration tests for the repositories against an in-memory database.
-
-## Database
-
-The generated database contains 15 tables and 2 full-text search indexes (FTS5).
-
-See [`docs/schema.md`](docs/schema.md) for a detailed description of each table.
-
-## Key dependencies
-
-| Crate       | Purpose                                        |
-|-------------|------------------------------------------------|
-| `rusqlite`  | SQLite access (bundled version included)       |
-| `reqwest`   | HTTP download of the dataset archives          |
-| `flate2`    | Gzip decompression                             |
-| `quick-xml` | Streaming XML parser with serde support        |
-| `serde`     | XML DTO deserialization                        |
-| `regex`     | Extracting entity definitions from JMDict DOCTYPE |
+See [docs/schema.md](docs/schema.md) for a full description of the database layout.
 
 ## Data sources
 
-- **JMDict**: maintained by [EDRDG](https://www.edrdg.org/). Licensed under [Creative Commons Attribution-ShareAlike 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
-- **KANJIDIC2**: maintained by [EDRDG](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project). Same license.
+| Source | URL | Coverage |
+|--------|-----|----------|
+| JMDict | ftp.edrdg.org | ~400k dictionary entries |
+| KANJIDIC2 | edrdg.org/kanjidic | ~13k kanji characters |
+| JLPT vocab/kanji | github.com/Bluskyo/JLPT_Vocabulary | N1–N5 level annotations |
+
+JMDict and KANJIDIC2 are maintained by the [Electronic Dictionary Research and Development Group (EDRDG)](https://www.edrdg.org/) and distributed under a [Creative Commons Attribution-ShareAlike 4.0 licence](https://creativecommons.org/licenses/by-sa/4.0/).
+
+## Dependencies
+
+| Crate        | Purpose                                  |
+|--------------|------------------------------------------|
+| `rusqlite`   | SQLite access (bundled, no system dep)   |
+| `reqwest`    | Blocking HTTP downloads                  |
+| `flate2`     | Gzip decompression                       |
+| `quick-xml`  | Streaming XML parsing + serde support    |
+| `serde`      | Deserialization of XML and JSON DTOs     |
+| `serde_json` | JSON array storage in TEXT columns       |
+| `regex`      | Extracting `<!ENTITY>` definitions       |
+
+## Build & run
+
+```bash
+# Compile
+cargo build --release
+
+# Build shodoukan.sqlite (downloads ~25 MB of source data)
+cargo run -p builder
+
+# Run all tests (in-memory SQLite, no downloads)
+cargo test
+```
+
+The generated `shodoukan.sqlite` is roughly 214 MB and supports full-text search over English glosses and kanji meanings via FTS5.
+
+## CI/CD
+
+Automated workflows run on every push and pull request:
+
+- **CI** (`.github/workflows/ci.yml`): `cargo build` + `cargo test`
+- **Release** (`.github/workflows/release.yml`): builds `shodoukan.sqlite` on tagged releases and attaches it as a release asset

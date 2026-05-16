@@ -1,7 +1,9 @@
 pub const CREATE_SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS entries (
-        id INTEGER PRIMARY KEY
+        id   INTEGER PRIMARY KEY,
+        jlpt INTEGER
     );
+    CREATE INDEX IF NOT EXISTS idx_entries_jlpt ON entries(jlpt);
 
     CREATE TABLE IF NOT EXISTS kanji_readings (
         id       INTEGER PRIMARY KEY AUTOINCREMENT,
