@@ -12,12 +12,12 @@ impl JMDictMapper {
         Source { name: dto.name, id: dto.id }
     }
 
-    fn map_gloss(&self, dto: GlossDto) -> Gloss {
-        Gloss {
-            text: dto.text,
-            type_: dto.type_,
-            lang: Some(dto.lang),
+    fn map_gloss(&self, dto: GlossDto) -> Option<Gloss> {
+        let text = dto.text?.trim().to_string();
+        if text.is_empty() {
+            return None;
         }
+        Some(Gloss { text, type_: dto.type_, lang: Some(dto.lang) })
     }
 
     fn map_example(&self, dto: ExampleDto) -> Example {
@@ -51,7 +51,7 @@ impl JMDictMapper {
             pos: dto.pos,
             misc: dto.misc,
             refs: dto.refs.into_iter().map(|r| self.map_cross_reference(r)).collect(),
-            glosses: dto.glosses.into_iter().map(|g| self.map_gloss(g)).collect(),
+            glosses: dto.glosses.into_iter().filter_map(|g| self.map_gloss(g)).collect(),
             info: dto.info,
             dialects: dto.dialects,
             examples: dto.examples.into_iter().map(|e| self.map_example(e)).collect(),
@@ -92,6 +92,7 @@ impl JMDictMapper {
 
         Entry {
             id: dto.id,
+            jlpt: None,
             readings,
             kanji_readings,
             senses: dto.senses.into_iter().map(|s| self.map_sense(s)).collect(),

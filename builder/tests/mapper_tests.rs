@@ -32,7 +32,7 @@ fn maps_basic_fields() {
             misc: vec![],
             refs: vec![],
             glosses: vec![GlossDto {
-                text: String::from("to eat"),
+                text: Some(String::from("to eat")),
                 type_: None,
                 lang: String::from("eng"),
             }],
@@ -63,8 +63,8 @@ fn preserves_gloss_language() {
             misc: vec![],
             refs: vec![],
             glosses: vec![
-                GlossDto { text: String::from("repetition mark"), type_: None, lang: String::from("eng") },
-                GlossDto { text: String::from("hitotsuten"), type_: None, lang: String::from("dut") },
+                GlossDto { text: Some(String::from("repetition mark")), type_: None, lang: String::from("eng") },
+                GlossDto { text: Some(String::from("hitotsuten")), type_: None, lang: String::from("dut") },
             ],
             info: vec![],
             dialects: vec![],

@@ -3,11 +3,13 @@ use std::collections::HashMap;
 use core::domain::models::entry::{
     CrossReference, Entry, Example, Gloss, KanjiReading, Reading, Sense, Source,
 };
-use core::infrastructure::sqlite::{connection, repository::{build_entry_kanji_relations, EntryRepository}};
+use core::infrastructure::sqlite::{connection, repository::{EntryRepository, KanjiRepository}};
+use core::domain::models::kanji::Kanji;
 
 fn sample_entry() -> Entry {
     Entry {
         id: 1000001,
+        jlpt: None,
         kanji_readings: vec![KanjiReading {
             kanji: String::from("食べ物"),
             restricted_readings: vec![],
@@ -115,6 +117,7 @@ fn insert_stores_reading_restrictions() {
     };
     let entry = Entry {
         id: 1000002,
+        jlpt: None,
         kanji_readings: vec![KanjiReading {
             kanji: String::from("食べ物"),
             restricted_readings: vec![restricted],
@@ -149,6 +152,7 @@ fn insert_stores_examples_and_sentences() {
 
     let entry = Entry {
         id: 1000003,
+        jlpt: None,
         kanji_readings: vec![],
         readings: vec![],
         senses: vec![Sense {
@@ -184,6 +188,7 @@ fn insert_stores_cross_references() {
 
     let entry = Entry {
         id: 1000004,
+        jlpt: None,
         kanji_readings: vec![],
         readings: vec![],
         senses: vec![Sense {
@@ -216,39 +221,73 @@ fn insert_stores_cross_references() {
 }
 
 #[test]
-fn build_entry_kanji_relations_links_cjk_chars() {
+fn update_entry_jlpt_with_kanji_key() {
     let conn = connection::open_in_memory().unwrap();
     let repo = EntryRepository::new(&conn);
-
     repo.insert(&sample_entry()).unwrap();
-    build_entry_kanji_relations(&conn).unwrap();
 
-    // 食べ物 contains 食 and 物 (べ is hiragana, not CJK)
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM entry_kanji WHERE entry_id = 1000001",
-            [],
-            |r| r.get(0),
-        )
+    repo.update_entry_jlpt("食べ物", "たべもの", 4).unwrap();
+
+    let jlpt: Option<u8> = conn
+        .query_row("SELECT jlpt FROM entries WHERE id = 1000001", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(count, 2);
+    assert_eq!(jlpt, Some(4));
 }
 
 #[test]
-fn build_entry_kanji_relations_stores_priority_score() {
+fn update_entry_jlpt_keeps_minimum() {
     let conn = connection::open_in_memory().unwrap();
     let repo = EntryRepository::new(&conn);
-
     repo.insert(&sample_entry()).unwrap();
-    build_entry_kanji_relations(&conn).unwrap();
 
-    // sample_entry has priority ["ichi1"] → score 1000
-    let score: i64 = conn
-        .query_row(
-            "SELECT priority_score FROM entry_kanji WHERE entry_id = 1000001 AND literal = '食'",
-            [],
-            |r| r.get(0),
-        )
+    repo.update_entry_jlpt("食べ物", "たべもの", 4).unwrap();
+    repo.update_entry_jlpt("食べ物", "たべもの", 3).unwrap();
+    repo.update_entry_jlpt("食べ物", "たべもの", 5).unwrap();
+
+    let jlpt: Option<u8> = conn
+        .query_row("SELECT jlpt FROM entries WHERE id = 1000001", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(score, 1000);
+    assert_eq!(jlpt, Some(3));
+}
+
+#[test]
+fn update_entry_jlpt_with_kana_key() {
+    let conn = connection::open_in_memory().unwrap();
+    let repo = EntryRepository::new(&conn);
+    repo.insert(&sample_entry()).unwrap();
+
+    repo.update_entry_jlpt("たべもの", "たべもの", 5).unwrap();
+
+    let jlpt: Option<u8> = conn
+        .query_row("SELECT jlpt FROM entries WHERE id = 1000001", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(jlpt, Some(5));
+}
+
+#[test]
+fn update_kanji_jlpt_keeps_minimum() {
+    let conn = connection::open_in_memory().unwrap();
+    let kanji_repo = KanjiRepository::new(&conn);
+
+    let kanji = Kanji {
+        literal: String::from("食"),
+        grade: None,
+        stroke_count: 9,
+        freq: None,
+        jlpt: None,
+        on_readings: vec![],
+        kun_readings: vec![],
+        meanings: vec![],
+        nanori: vec![],
+    };
+    kanji_repo.insert(&kanji).unwrap();
+
+    kanji_repo.update_jlpt("食", 4).unwrap();
+    kanji_repo.update_jlpt("食", 3).unwrap();
+    kanji_repo.update_jlpt("食", 5).unwrap();
+
+    let jlpt: Option<u8> = conn
+        .query_row("SELECT jlpt FROM kanji WHERE literal = '食'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(jlpt, Some(3));
 }

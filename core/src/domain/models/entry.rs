@@ -3,6 +3,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct Entry{
     pub id: u32,
+    pub jlpt: Option<u8>,
     pub kanji_readings: Vec<KanjiReading>,
     pub readings: Vec<Reading>,
     pub senses: Vec<Sense>
