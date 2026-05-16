@@ -17,6 +17,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
 
       - uses: actions/cache@v4
         with:
@@ -30,12 +32,23 @@ jobs:
       - name: Build database
         run: cargo run -p builder --release
 
+      - name: Resolve release tag
+        id: tag
+        run: |
+          VERSION=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+          DATE=$(date -u +%Y-%m-%d)
+          if [ -n "$VERSION" ]; then
+            echo "ref=${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=db-${DATE}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "title=Database ${DATE}" >> "$GITHUB_OUTPUT"
+
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="db-$(date -u +%Y-%m-%d)"
-          gh release create "$TAG" shodoukan.sqlite \
-            --title "Database $TAG" \
-            --notes "Monthly database build from JMDict and KANJIDIC2." \
+          gh release create "${{ steps.tag.outputs.ref }}" shodoukan.sqlite \
+            --title "${{ steps.tag.outputs.title }}" \
+            --notes "Database build from JMDict and KANJIDIC2." \
             --latest
