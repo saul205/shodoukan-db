@@ -1,6 +1,6 @@
 # Database schema
 
-`shodoukan.sqlite` contains 12 regular tables, 2 FTS5 virtual tables, and 2 triggers. Tables are grouped into two domains: dictionary entries (from JMDict) and kanji (from KANJIDIC2). A junction table links both domains.
+`shodoukan.sqlite` contains 13 regular tables, 2 FTS5 virtual tables, and 2 triggers. Tables are grouped into two domains: dictionary entries (from JMDict) and kanji (from KANJIDIC2). A junction table links both domains.
 
 Arrays (priority tags, part-of-speech, readings, etc.) are stored as JSON strings inside `TEXT` columns (e.g. `'["news1","ichi1"]'`).
 
@@ -15,6 +15,7 @@ entries ──< kanji_readings ──< reading_restrictions >── readings
                    ──< cross_references
                    ──< examples ──< example_sentences
         ──< entry_kanji >── kanji ──< kanji_meanings ──> kanji_meanings_fts (FTS5)
+        ──< entry_sense_counts
 ```
 
 ---
@@ -25,10 +26,12 @@ entries ──< kanji_readings ──< reading_restrictions >── readings
 
 Root table. One row per JMDict entry.
 
-| Column | Type    | Nullable | Description |
-|--------|---------|----------|-------------|
-| `id`   | INTEGER | NO       | JMDict sequence number (primary key) |
-| `jlpt` | INTEGER | YES      | JLPT level 1–5 (1 = N1, 5 = N5). Set from the JLPT enrichment source; `NULL` if not listed |
+| Column       | Type    | Nullable | Description |
+|--------------|---------|----------|-------------|
+| `id`         | INTEGER | NO       | JMDict sequence number (primary key) |
+| `jlpt`       | INTEGER | YES      | JLPT level 1–5 (1 = N1, 5 = N5). Set from the JLPT enrichment source; `NULL` if not listed |
+| `freq_score` | INTEGER | NO       | Pre-computed frequency score. Sum of per-tag scores (Tier 1 tags = 10 pts each, Tier 2 = 5 pts each) across all readings and kanji forms, plus a 500-point bonus if any Tier 1 tag is present (`has_common = 1`). Tier 1: `ichi1`, `spec1`, `news1`, `gai1`. Tier 2: `ichi2`, `spec2`, `news2`, `gai2` |
+| `has_common` | INTEGER | NO       | `1` if at least one reading or kanji form carries a Tier 1 priority tag; `0` otherwise |
 
 Indexes: `idx_entries_jlpt` on `jlpt`.
 
@@ -84,14 +87,15 @@ Primary key: `(reading_id, kanji_reading_id)`.
 
 One sense = one group of definitions sharing the same part-of-speech, dialect, etc. An entry has one or more senses.
 
-| Column    | Type | Nullable | Description |
-|-----------|------|----------|-------------|
-| `id`      | INTEGER | NO    | Auto-incremented primary key |
-| `entry_id`| INTEGER | NO    | FK → `entries(id)` |
-| `pos`     | TEXT    | NO    | JSON array of part-of-speech tags (e.g. `["v1","vt"]`) |
-| `misc`    | TEXT    | NO    | JSON array of miscellaneous info tags |
-| `dialects`| TEXT    | NO    | JSON array of dialect tags |
-| `info`    | TEXT    | NO    | JSON array of sense-level notes |
+| Column        | Type    | Nullable | Description |
+|---------------|---------|----------|-------------|
+| `id`          | INTEGER | NO       | Auto-incremented primary key |
+| `entry_id`    | INTEGER | NO       | FK → `entries(id)` |
+| `sense_index` | INTEGER | NO       | 0-based position of this sense within its entry (first sense = 0) |
+| `pos`         | TEXT    | NO       | JSON array of part-of-speech tags (e.g. `["v1","vt"]`) |
+| `misc`        | TEXT    | NO       | JSON array of miscellaneous info tags |
+| `dialects`    | TEXT    | NO       | JSON array of dialect tags |
+| `info`        | TEXT    | NO       | JSON array of sense-level notes |
 
 Index: `idx_senses_entry` on `entry_id`.
 
@@ -210,6 +214,21 @@ Index: `idx_entry_kanji_literal` on `literal` (supports kanji → entries lookup
 
 ---
 
+### `entry_sense_counts`
+
+Pre-computed count of senses per entry per language. A sense is counted once per language regardless of how many glosses it contains. Populated automatically during entry insertion.
+
+| Column     | Type    | Nullable | Description |
+|------------|---------|----------|-------------|
+| `entry_id` | INTEGER | NO       | FK → `entries(id)` |
+| `lang`     | TEXT    | NO       | BCP 47 language tag (e.g. `"eng"`, `"dut"`) |
+| `count`    | INTEGER | NO       | Number of senses that have at least one gloss in this language |
+
+Primary key: `(entry_id, lang)`.
+Index: `idx_entry_sense_counts_entry` on `entry_id`.
+
+---
+
 ## Full-text search (FTS5)
 
 ### `glosses_fts`
@@ -248,20 +267,28 @@ ORDER BY rank;
 ### Look up an entry by kana reading
 
 ```sql
-SELECT e.id, e.jlpt, r.text
+SELECT e.id, e.jlpt, e.freq_score, e.has_common, r.text
 FROM readings r
 JOIN entries e ON e.id = r.entry_id
 WHERE r.text = 'たべる';
 ```
 
-### Get all senses and glosses for an entry
+### Get all senses and glosses for an entry (ordered by position)
 
 ```sql
-SELECT s.pos, g.text AS gloss, g.lang
+SELECT s.sense_index, s.pos, g.text AS gloss, g.lang
 FROM senses s
 JOIN glosses g ON g.sense_id = s.id
 WHERE s.entry_id = 1169420
-ORDER BY s.id, g.id;
+ORDER BY s.sense_index, g.id;
+```
+
+### Get total English sense count for an entry
+
+```sql
+SELECT count
+FROM entry_sense_counts
+WHERE entry_id = 1169420 AND lang = 'eng';
 ```
 
 ### Find entries that contain a specific kanji

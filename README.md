@@ -43,7 +43,7 @@ Binary crate that runs the full ingestion pipeline:
 1. Downloads and parses **JMDict** (~400k entries: words, readings, senses, glosses, examples)
 2. Downloads and parses **KANJIDIC2** (~13k kanji: readings, meanings, grade, stroke count, frequency)
 3. Downloads **JLPT vocabulary and kanji lists** and uses them to set JLPT levels on entries and kanji
-4. Creates `shodoukan.sqlite`, inserts all data in transactional bulk operations
+4. Creates `shodoukan.sqlite`, inserts all data in transactional bulk operations; pre-computes `freq_score`, `has_common`, `sense_index`, and per-language sense counts during ingestion
 5. Populates `entry_kanji` junction table by extracting CJK codepoints from kanji forms
 
 See [docs/schema.md](docs/schema.md) for a full description of the database layout.

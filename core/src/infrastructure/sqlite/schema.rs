@@ -1,7 +1,9 @@
 pub const CREATE_SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS entries (
-        id   INTEGER PRIMARY KEY,
-        jlpt INTEGER
+        id         INTEGER PRIMARY KEY,
+        jlpt       INTEGER,
+        freq_score INTEGER NOT NULL DEFAULT 0,
+        has_common INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_entries_jlpt ON entries(jlpt);
 
@@ -33,12 +35,13 @@ pub const CREATE_SCHEMA: &str = "
     );
 
     CREATE TABLE IF NOT EXISTS senses (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        entry_id INTEGER NOT NULL REFERENCES entries(id),
-        pos      TEXT    NOT NULL DEFAULT '[]',
-        misc     TEXT    NOT NULL DEFAULT '[]',
-        dialects TEXT    NOT NULL DEFAULT '[]',
-        info     TEXT    NOT NULL DEFAULT '[]'
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        entry_id    INTEGER NOT NULL REFERENCES entries(id),
+        sense_index INTEGER NOT NULL,
+        pos         TEXT    NOT NULL DEFAULT '[]',
+        misc        TEXT    NOT NULL DEFAULT '[]',
+        dialects    TEXT    NOT NULL DEFAULT '[]',
+        info        TEXT    NOT NULL DEFAULT '[]'
     );
     CREATE INDEX IF NOT EXISTS idx_senses_entry ON senses(entry_id);
 
@@ -119,10 +122,17 @@ pub const CREATE_SCHEMA: &str = "
     END;
 
     CREATE TABLE IF NOT EXISTS entry_kanji (
-        entry_id       INTEGER NOT NULL REFERENCES entries(id),
-        literal        TEXT    NOT NULL,
-        priority_score INTEGER NOT NULL DEFAULT 0,
+        entry_id INTEGER NOT NULL REFERENCES entries(id),
+        literal  TEXT    NOT NULL,
         PRIMARY KEY (entry_id, literal)
     );
     CREATE INDEX IF NOT EXISTS idx_entry_kanji_literal ON entry_kanji(literal);
+
+    CREATE TABLE IF NOT EXISTS entry_sense_counts (
+        entry_id INTEGER NOT NULL REFERENCES entries(id),
+        lang     TEXT    NOT NULL,
+        count    INTEGER NOT NULL,
+        PRIMARY KEY (entry_id, lang)
+    );
+    CREATE INDEX IF NOT EXISTS idx_entry_sense_counts_entry ON entry_sense_counts(entry_id);
 ";
