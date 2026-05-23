@@ -109,7 +109,7 @@ English (or other language) translations within a sense.
 | `type`     | TEXT    | YES      | Gloss type (`"expl"`, `"tm"`, etc.) |
 | `lang`     | TEXT    | YES      | BCP 47 language tag (default `"eng"`) |
 
-Index: `idx_glosses_sense` on `sense_id`.
+Indexes: `idx_glosses_sense` on `sense_id`, `idx_glosses_lang_sense` on `(lang, sense_id)`.
 
 Full-text search is available via `glosses_fts` (see below).
 
@@ -202,8 +202,9 @@ Links dictionary entries to the individual kanji characters they contain. Popula
 
 | Column     | Type    | Nullable | Description |
 |------------|---------|----------|-------------|
-| `entry_id` | INTEGER | NO       | FK → `entries(id)` |
-| `literal`  | TEXT    | NO       | A kanji character found in this entry |
+| `entry_id`       | INTEGER | NO | FK → `entries(id)` |
+| `literal`        | TEXT    | NO | A kanji character found in this entry |
+| `priority_score` | INTEGER | NO | Aggregate priority score derived from the entry's priority tags (e.g. `ichi1`=1000, `news1`=400). Higher = more common. |
 
 Primary key: `(entry_id, literal)`.
 Index: `idx_entry_kanji_literal` on `literal` (supports kanji → entries lookups).
