@@ -52,7 +52,8 @@ pub const CREATE_SCHEMA: &str = "
         type     TEXT,
         lang     TEXT
     );
-    CREATE INDEX IF NOT EXISTS idx_glosses_sense ON glosses(sense_id);
+    CREATE INDEX IF NOT EXISTS idx_glosses_sense     ON glosses(sense_id);
+    CREATE INDEX IF NOT EXISTS idx_glosses_lang_sense ON glosses(lang, sense_id);
 
     CREATE VIRTUAL TABLE IF NOT EXISTS glosses_fts USING fts5(
         text,
