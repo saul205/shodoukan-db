@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [Unreleased] — 2026-05-24
+## [0.5.0] — 2026-05-24
 
 ### Added
 - `idx_glosses_lang_sense` — composite index on `glosses(lang, sense_id)` for efficient language-filtered JOIN queries
@@ -16,7 +16,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 - Release workflow now uses the git tag as the release ref when the commit is tagged (title always shows the build date)
-- `builder` and `core` `Cargo.toml` versions aligned to `0.4.0`
+- `builder` and `core` `Cargo.toml` versions bumped to `0.5.0`
 - `build_entry_kanji_relations` simplified: no longer computes per-entry priority scores; now collects unique `(entry_id, literal)` pairs only
 - `docs/schema.md` updated: table count 12 → 13, new columns and table documented, query examples updated
 
