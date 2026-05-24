@@ -15,12 +15,14 @@ impl<'a> EntryRepository<'a> {
     }
 
     pub fn insert(&self, entry: &Entry) -> Result<()> {
+        let (freq_score, has_common) = compute_freq_score(entry);
         self.conn.execute(
-            "INSERT INTO entries (id, jlpt) VALUES (?1, ?2)",
-            params![entry.id, entry.jlpt],
+            "INSERT INTO entries (id, jlpt, freq_score, has_common) VALUES (?1, ?2, ?3, ?4)",
+            params![entry.id, entry.jlpt, freq_score, has_common as i32],
         )?;
         self.insert_readings(entry)?;
         self.insert_senses(entry)?;
+        self.insert_sense_counts(entry)?;
         Ok(())
     }
 
@@ -84,11 +86,11 @@ impl<'a> EntryRepository<'a> {
     }
 
     fn insert_senses(&self, entry: &Entry) -> Result<()> {
-        for s in &entry.senses {
+        for (index, s) in entry.senses.iter().enumerate() {
             self.conn.execute(
-                "INSERT INTO senses (entry_id, pos, misc, dialects, info)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![entry.id, json(&s.pos), json(&s.misc), json(&s.dialects), json(&s.info)],
+                "INSERT INTO senses (entry_id, sense_index, pos, misc, dialects, info)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![entry.id, index as i32, json(&s.pos), json(&s.misc), json(&s.dialects), json(&s.info)],
             )?;
             let sense_id = self.conn.last_insert_rowid();
 
@@ -125,6 +127,16 @@ impl<'a> EntryRepository<'a> {
             }
         }
 
+        Ok(())
+    }
+
+    fn insert_sense_counts(&self, entry: &Entry) -> Result<()> {
+        for (lang, count) in count_senses_by_lang(entry) {
+            self.conn.execute(
+                "INSERT INTO entry_sense_counts (entry_id, lang, count) VALUES (?1, ?2, ?3)",
+                params![entry.id, lang, count as i32],
+            )?;
+        }
         Ok(())
     }
 }
@@ -181,31 +193,23 @@ impl<'a> KanjiRepository<'a> {
 // ── Entry-Kanji Relations ─────────────────────────────────────────────────────
 
 pub fn build_entry_kanji_relations(conn: &Connection) -> Result<()> {
-    let mut stmt = conn.prepare(
-        "SELECT entry_id, kanji, priority FROM kanji_readings",
-    )?;
+    let mut stmt = conn.prepare("SELECT entry_id, kanji FROM kanji_readings")?;
 
-    let rows: Vec<(i64, String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+    let rows: Vec<(i64, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<Result<_>>()?;
 
-    let mut scores: HashMap<(i64, String), i32> = HashMap::new();
-    for (entry_id, kanji, priority_json) in rows {
-        let priorities: Vec<String> =
-            serde_json::from_str(&priority_json).unwrap_or_default();
-        let score: i32 = priorities.iter().map(|p| score_priority(p)).sum();
-
+    let mut pairs: std::collections::HashSet<(i64, String)> = std::collections::HashSet::new();
+    for (entry_id, kanji) in rows {
         for ch in kanji.chars().filter(|c| is_cjk(*c)) {
-            let best = scores.entry((entry_id, ch.to_string())).or_insert(0);
-            *best = (*best).max(score);
+            pairs.insert((entry_id, ch.to_string()));
         }
     }
 
-    for ((entry_id, literal), score) in scores {
+    for (entry_id, literal) in pairs {
         conn.execute(
-            "INSERT OR REPLACE INTO entry_kanji (entry_id, literal, priority_score)
-             VALUES (?1, ?2, ?3)",
-            params![entry_id, literal, score],
+            "INSERT OR REPLACE INTO entry_kanji (entry_id, literal) VALUES (?1, ?2)",
+            params![entry_id, literal],
         )?;
     }
 
@@ -218,26 +222,49 @@ fn json(v: &[String]) -> String {
     serde_json::to_string(v).unwrap_or_else(|_| String::from("[]"))
 }
 
-fn score_priority(p: &str) -> i32 {
-    match p {
-        "ichi1" => 1000,
-        "ichi2" =>  500,
-        "news1" =>  400,
-        "news2" =>  200,
-        "spec1" =>  300,
-        "spec2" =>  150,
-        "gai1"  =>  100,
-        "gai2"  =>   50,
-        s if s.starts_with("nf") =>
-            s[2..].parse::<i32>().map(|n| 200 - n * 4).unwrap_or(0),
-        _ => 0,
-    }
-}
-
 fn is_cjk(c: char) -> bool {
     matches!(c,
         '\u{4E00}'..='\u{9FFF}' |
         '\u{3400}'..='\u{4DBF}' |
         '\u{F900}'..='\u{FAFF}'
     )
+}
+
+const TIER1: &[&str] = &["ichi1", "spec1", "news1", "gai1"];
+const TIER2: &[&str] = &["ichi2", "spec2", "news2", "gai2"];
+
+fn per_tag_score(tags: &[String]) -> i32 {
+    let t1 = TIER1.iter().filter(|&&t| tags.iter().any(|p| p == t)).count() as i32;
+    let t2 = TIER2.iter().filter(|&&t| tags.iter().any(|p| p == t)).count() as i32;
+    t1 * 10 + t2 * 5
+}
+
+fn compute_freq_score(entry: &Entry) -> (i32, bool) {
+    let has_common = entry.kanji_readings.iter()
+        .any(|kr| TIER1.iter().any(|&t| kr.priority.iter().any(|p| p == t)))
+        || entry.readings.iter()
+        .any(|r| TIER1.iter().any(|&t| r.priority.iter().any(|p| p == t)));
+    let bonus = if has_common { 500 } else { 0 };
+    let max_kanji = entry.kanji_readings.iter()
+        .map(|kr| per_tag_score(&kr.priority))
+        .max()
+        .unwrap_or(0);
+    let max_reading = entry.readings.iter()
+        .map(|r| per_tag_score(&r.priority))
+        .max()
+        .unwrap_or(0);
+    (bonus + max_kanji + max_reading, has_common)
+}
+
+fn count_senses_by_lang(entry: &Entry) -> HashMap<String, usize> {
+    use std::collections::HashSet;
+    let mut lang_senses: HashMap<String, HashSet<usize>> = HashMap::new();
+    for (sense_idx, sense) in entry.senses.iter().enumerate() {
+        for gloss in &sense.glosses {
+            if let Some(lang) = &gloss.lang {
+                lang_senses.entry(lang.clone()).or_default().insert(sense_idx);
+            }
+        }
+    }
+    lang_senses.into_iter().map(|(lang, ids)| (lang, ids.len())).collect()
 }

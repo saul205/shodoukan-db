@@ -85,6 +85,20 @@ fn insert_populates_all_tables() {
         })
         .unwrap();
     assert_eq!(pos, r#"["noun"]"#);
+
+    let sense_index: i32 = conn
+        .query_row("SELECT sense_index FROM senses WHERE entry_id = 1000001", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(sense_index, 0);
+
+    let (freq_score, has_common): (i32, i32) = conn
+        .query_row("SELECT freq_score, has_common FROM entries WHERE id = 1000001", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    // ichi1 on kanji_reading + ichi1 on reading → has_common bonus 500 + 10 + 10
+    assert_eq!(freq_score, 520);
+    assert_eq!(has_common, 1);
 }
 
 #[test]
@@ -290,4 +304,155 @@ fn update_kanji_jlpt_keeps_minimum() {
         .query_row("SELECT jlpt FROM kanji WHERE literal = '食'", [], |r| r.get(0))
         .unwrap();
     assert_eq!(jlpt, Some(3));
+}
+
+#[test]
+fn sense_index_reflects_position() {
+    let conn = connection::open_in_memory().unwrap();
+    let repo = EntryRepository::new(&conn);
+
+    let entry = Entry {
+        id: 2000001,
+        jlpt: None,
+        kanji_readings: vec![],
+        readings: vec![],
+        senses: vec![
+            Sense { pos: vec![], misc: vec![], refs: vec![], glosses: vec![], info: vec![], dialects: vec![], examples: vec![] },
+            Sense { pos: vec![], misc: vec![], refs: vec![], glosses: vec![], info: vec![], dialects: vec![], examples: vec![] },
+            Sense { pos: vec![], misc: vec![], refs: vec![], glosses: vec![], info: vec![], dialects: vec![], examples: vec![] },
+        ],
+    };
+    repo.insert(&entry).unwrap();
+
+    let indices: Vec<i32> = {
+        let mut stmt = conn.prepare("SELECT sense_index FROM senses WHERE entry_id = 2000001 ORDER BY id").unwrap();
+        stmt.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+    };
+    assert_eq!(indices, vec![0, 1, 2]);
+}
+
+#[test]
+fn freq_score_zero_for_no_priority() {
+    let conn = connection::open_in_memory().unwrap();
+    let repo = EntryRepository::new(&conn);
+
+    let entry = Entry {
+        id: 2000002,
+        jlpt: None,
+        kanji_readings: vec![KanjiReading {
+            kanji: String::from("無"),
+            restricted_readings: vec![],
+            priority: vec![],
+            info: vec![],
+        }],
+        readings: vec![Reading {
+            text: String::from("む"),
+            priority: vec![],
+            no_kanji: false,
+            info: vec![],
+        }],
+        senses: vec![],
+    };
+    repo.insert(&entry).unwrap();
+
+    let (freq_score, has_common): (i32, i32) = conn
+        .query_row("SELECT freq_score, has_common FROM entries WHERE id = 2000002", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    assert_eq!(freq_score, 0);
+    assert_eq!(has_common, 0);
+}
+
+#[test]
+fn sense_counts_populated() {
+    let conn = connection::open_in_memory().unwrap();
+    let repo = EntryRepository::new(&conn);
+
+    let entry = Entry {
+        id: 2000003,
+        jlpt: None,
+        kanji_readings: vec![],
+        readings: vec![],
+        senses: vec![
+            Sense {
+                pos: vec![],
+                misc: vec![],
+                refs: vec![],
+                glosses: vec![
+                    Gloss { text: String::from("apple"), type_: None, lang: Some(String::from("eng")) },
+                    Gloss { text: String::from("appel"), type_: None, lang: Some(String::from("dut")) },
+                ],
+                info: vec![],
+                dialects: vec![],
+                examples: vec![],
+            },
+            Sense {
+                pos: vec![],
+                misc: vec![],
+                refs: vec![],
+                glosses: vec![
+                    Gloss { text: String::from("fruit"), type_: None, lang: Some(String::from("eng")) },
+                ],
+                info: vec![],
+                dialects: vec![],
+                examples: vec![],
+            },
+        ],
+    };
+    repo.insert(&entry).unwrap();
+
+    let eng_count: i32 = conn
+        .query_row(
+            "SELECT count FROM entry_sense_counts WHERE entry_id = 2000003 AND lang = 'eng'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(eng_count, 2);
+
+    let dut_count: i32 = conn
+        .query_row(
+            "SELECT count FROM entry_sense_counts WHERE entry_id = 2000003 AND lang = 'dut'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(dut_count, 1);
+}
+
+#[test]
+fn sense_counts_deduplicate_senses() {
+    let conn = connection::open_in_memory().unwrap();
+    let repo = EntryRepository::new(&conn);
+
+    let entry = Entry {
+        id: 2000004,
+        jlpt: None,
+        kanji_readings: vec![],
+        readings: vec![],
+        senses: vec![Sense {
+            pos: vec![],
+            misc: vec![],
+            refs: vec![],
+            glosses: vec![
+                Gloss { text: String::from("one"), type_: None, lang: Some(String::from("eng")) },
+                Gloss { text: String::from("two"), type_: None, lang: Some(String::from("eng")) },
+                Gloss { text: String::from("three"), type_: None, lang: Some(String::from("eng")) },
+            ],
+            info: vec![],
+            dialects: vec![],
+            examples: vec![],
+        }],
+    };
+    repo.insert(&entry).unwrap();
+
+    let count: i32 = conn
+        .query_row(
+            "SELECT count FROM entry_sense_counts WHERE entry_id = 2000004 AND lang = 'eng'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1);
 }
