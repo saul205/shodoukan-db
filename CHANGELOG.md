@@ -4,7 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
-## [Unreleased]
+## [0.5.0] — 2026-05-24
+
+### Added
+- `idx_glosses_lang_sense` — composite index on `glosses(lang, sense_id)` for efficient language-filtered JOIN queries
+- `entries.freq_score` — pre-computed frequency score ingested at build time; mirrors the Tier 1 / Tier 2 priority tag weights from the Python search engine (`ichi1`, `spec1`, `news1`, `gai1` = 10 pts each; `ichi2`, `spec2`, `news2`, `gai2` = 5 pts each; 500-point bonus when `has_common` is set)
+- `entries.has_common` — `1` if any reading or kanji form carries a Tier 1 priority tag; `0` otherwise
+- `senses.sense_index` — 0-based position of each sense within its entry, recorded at insert time
+- `entry_sense_counts` table — pre-computed count of senses per entry per language (one row per `(entry_id, lang)` pair); a sense is counted once regardless of how many glosses it contains
+- `idx_entry_sense_counts_entry` index on `entry_sense_counts(entry_id)`
+
+### Changed
+- Release workflow now uses the git tag as the release ref when the commit is tagged (title always shows the build date)
+- `builder` and `core` `Cargo.toml` versions bumped to `0.5.0`
+- `build_entry_kanji_relations` simplified: no longer computes per-entry priority scores; now collects unique `(entry_id, literal)` pairs only
+- `docs/schema.md` updated: table count 12 → 13, new columns and table documented, query examples updated
+
+### Removed
+- `entry_kanji.priority_score` column — was unused; removed along with the `score_priority` helper in `repository.rs`
 
 ### Planned
 - Query interface (API or CLI)
