@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [0.5.0] — 2026-05-24
+## [0.5.1] — 2026-06-19
 
 ### Added
 - `idx_glosses_lang_sense` — composite index on `glosses(lang, sense_id)` for efficient language-filtered JOIN queries
@@ -13,10 +13,12 @@ All notable changes to this project are documented here.
 - `senses.sense_index` — 0-based position of each sense within its entry, recorded at insert time
 - `entry_sense_counts` table — pre-computed count of senses per entry per language (one row per `(entry_id, lang)` pair); a sense is counted once regardless of how many glosses it contains
 - `idx_entry_sense_counts_entry` index on `entry_sense_counts(entry_id)`
+- `sense_lang_index` table — per-language 0-based position of each sense within its entry (`lang_sense_index`); a sense with only a Spanish gloss at global position 9 gets `lang_sense_index = 0` for `spa`, enabling correct language-specific ranking without negative scores
+- `idx_sense_lang_index_sense` index on `sense_lang_index(sense_id)`
 
 ### Changed
 - Release workflow now uses the git tag as the release ref when the commit is tagged (title always shows the build date)
-- `builder` and `core` `Cargo.toml` versions bumped to `0.5.0`
+- `builder` and `core` `Cargo.toml` versions bumped to `0.5.1`
 - `build_entry_kanji_relations` simplified: no longer computes per-entry priority scores; now collects unique `(entry_id, literal)` pairs only
 - `docs/schema.md` updated: table count 12 → 13, new columns and table documented, query examples updated
 
