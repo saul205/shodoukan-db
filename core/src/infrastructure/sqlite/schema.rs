@@ -136,4 +136,12 @@ pub const CREATE_SCHEMA: &str = "
         PRIMARY KEY (entry_id, lang)
     );
     CREATE INDEX IF NOT EXISTS idx_entry_sense_counts_entry ON entry_sense_counts(entry_id);
+
+    CREATE TABLE IF NOT EXISTS sense_lang_index (
+        sense_id         INTEGER NOT NULL REFERENCES senses(id),
+        lang             TEXT    NOT NULL,
+        lang_sense_index INTEGER NOT NULL,
+        PRIMARY KEY (sense_id, lang)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sense_lang_index_sense ON sense_lang_index(sense_id);
 ";

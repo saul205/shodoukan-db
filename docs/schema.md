@@ -1,6 +1,6 @@
 # Database schema
 
-`shodoukan.sqlite` contains 13 regular tables, 2 FTS5 virtual tables, and 2 triggers. Tables are grouped into two domains: dictionary entries (from JMDict) and kanji (from KANJIDIC2). A junction table links both domains.
+`shodoukan.sqlite` contains 14 regular tables, 2 FTS5 virtual tables, and 2 triggers. Tables are grouped into two domains: dictionary entries (from JMDict) and kanji (from KANJIDIC2). A junction table links both domains.
 
 Arrays (priority tags, part-of-speech, readings, etc.) are stored as JSON strings inside `TEXT` columns (e.g. `'["news1","ichi1"]'`).
 
@@ -14,6 +14,7 @@ entries ──< kanji_readings ──< reading_restrictions >── readings
         ──< senses ──< glosses ──> glosses_fts (FTS5)
                    ──< cross_references
                    ──< examples ──< example_sentences
+                   ──< sense_lang_index
         ──< entry_kanji >── kanji ──< kanji_meanings ──> kanji_meanings_fts (FTS5)
         ──< entry_sense_counts
 ```
@@ -227,6 +228,23 @@ Pre-computed count of senses per entry per language. A sense is counted once per
 
 Primary key: `(entry_id, lang)`.
 Index: `idx_entry_sense_counts_entry` on `entry_id`.
+
+---
+
+### `sense_lang_index`
+
+Per-language position of a sense within its entry. Whereas `senses.sense_index` is the global 0-based position across all languages, `lang_sense_index` is the 0-based position among the senses of the same entry that have at least one gloss in that specific language. Populated automatically during entry insertion.
+
+| Column            | Type    | Nullable | Description |
+|-------------------|---------|----------|-------------|
+| `sense_id`        | INTEGER | NO       | FK → `senses(id)` |
+| `lang`            | TEXT    | NO       | BCP 47 language tag (e.g. `"eng"`, `"spa"`) |
+| `lang_sense_index`| INTEGER | NO       | 0-based position of this sense among senses with at least one gloss in `lang` |
+
+Primary key: `(sense_id, lang)`.
+Index: `idx_sense_lang_index_sense` on `sense_id`.
+
+**Example** — 食べる has 10 senses, one of which ("comer") contains only a Spanish gloss and is at global `sense_index = 9`. Its `lang_sense_index` for `spa` is `0` (the first and only Spanish sense), while its `lang_sense_index` for `eng` is not present (no English gloss in that sense).
 
 ---
 

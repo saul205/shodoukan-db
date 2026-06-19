@@ -13,6 +13,8 @@ All notable changes to this project are documented here.
 - `senses.sense_index` — 0-based position of each sense within its entry, recorded at insert time
 - `entry_sense_counts` table — pre-computed count of senses per entry per language (one row per `(entry_id, lang)` pair); a sense is counted once regardless of how many glosses it contains
 - `idx_entry_sense_counts_entry` index on `entry_sense_counts(entry_id)`
+- `sense_lang_index` table — per-language 0-based position of each sense within its entry (`lang_sense_index`); a sense with only a Spanish gloss at global position 9 gets `lang_sense_index = 0` for `spa`, enabling correct language-specific ranking without negative scores
+- `idx_sense_lang_index_sense` index on `sense_lang_index(sense_id)`
 
 ### Changed
 - Release workflow now uses the git tag as the release ref when the commit is tagged (title always shows the build date)
