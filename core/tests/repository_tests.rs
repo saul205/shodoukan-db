@@ -456,3 +456,112 @@ fn sense_counts_deduplicate_senses() {
         .unwrap();
     assert_eq!(count, 1);
 }
+
+#[test]
+fn lang_sense_index_matches_lang_position() {
+    let conn = connection::open_in_memory().unwrap();
+    let repo = EntryRepository::new(&conn);
+
+    // sense 0: English only
+    // sense 1: Spanish only
+    // sense 2: English only
+    // → English lang_sense_index: sense 0 → 0, sense 2 → 1
+    // → Spanish lang_sense_index: sense 1 → 0
+    let entry = Entry {
+        id: 3000001,
+        jlpt: None,
+        kanji_readings: vec![],
+        readings: vec![],
+        senses: vec![
+            Sense {
+                pos: vec![], misc: vec![], refs: vec![],
+                glosses: vec![Gloss { text: String::from("to eat"), type_: None, lang: Some(String::from("eng")) }],
+                info: vec![], dialects: vec![], examples: vec![],
+            },
+            Sense {
+                pos: vec![], misc: vec![], refs: vec![],
+                glosses: vec![Gloss { text: String::from("comer"), type_: None, lang: Some(String::from("spa")) }],
+                info: vec![], dialects: vec![], examples: vec![],
+            },
+            Sense {
+                pos: vec![], misc: vec![], refs: vec![],
+                glosses: vec![Gloss { text: String::from("to consume"), type_: None, lang: Some(String::from("eng")) }],
+                info: vec![], dialects: vec![], examples: vec![],
+            },
+        ],
+    };
+    repo.insert(&entry).unwrap();
+
+    // sense_ids in insertion order
+    let sense_ids: Vec<i64> = {
+        let mut stmt = conn.prepare("SELECT id FROM senses WHERE entry_id = 3000001 ORDER BY sense_index").unwrap();
+        stmt.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+    };
+
+    let eng0: i32 = conn.query_row(
+        "SELECT lang_sense_index FROM sense_lang_index WHERE sense_id = ?1 AND lang = 'eng'",
+        [sense_ids[0]], |r| r.get(0),
+    ).unwrap();
+    assert_eq!(eng0, 0);
+
+    let spa: i32 = conn.query_row(
+        "SELECT lang_sense_index FROM sense_lang_index WHERE sense_id = ?1 AND lang = 'spa'",
+        [sense_ids[1]], |r| r.get(0),
+    ).unwrap();
+    assert_eq!(spa, 0);
+
+    let eng1: i32 = conn.query_row(
+        "SELECT lang_sense_index FROM sense_lang_index WHERE sense_id = ?1 AND lang = 'eng'",
+        [sense_ids[2]], |r| r.get(0),
+    ).unwrap();
+    assert_eq!(eng1, 1);
+}
+
+#[test]
+fn lang_sense_index_deduplicates_langs_per_sense() {
+    let conn = connection::open_in_memory().unwrap();
+    let repo = EntryRepository::new(&conn);
+
+    // sense 0: 3 English glosses → still counts as lang_sense_index 0
+    // sense 1: 1 English gloss  → lang_sense_index 1
+    let entry = Entry {
+        id: 3000002,
+        jlpt: None,
+        kanji_readings: vec![],
+        readings: vec![],
+        senses: vec![
+            Sense {
+                pos: vec![], misc: vec![], refs: vec![],
+                glosses: vec![
+                    Gloss { text: String::from("one"),   type_: None, lang: Some(String::from("eng")) },
+                    Gloss { text: String::from("two"),   type_: None, lang: Some(String::from("eng")) },
+                    Gloss { text: String::from("three"), type_: None, lang: Some(String::from("eng")) },
+                ],
+                info: vec![], dialects: vec![], examples: vec![],
+            },
+            Sense {
+                pos: vec![], misc: vec![], refs: vec![],
+                glosses: vec![Gloss { text: String::from("four"), type_: None, lang: Some(String::from("eng")) }],
+                info: vec![], dialects: vec![], examples: vec![],
+            },
+        ],
+    };
+    repo.insert(&entry).unwrap();
+
+    let sense_ids: Vec<i64> = {
+        let mut stmt = conn.prepare("SELECT id FROM senses WHERE entry_id = 3000002 ORDER BY sense_index").unwrap();
+        stmt.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+    };
+
+    let idx0: i32 = conn.query_row(
+        "SELECT lang_sense_index FROM sense_lang_index WHERE sense_id = ?1 AND lang = 'eng'",
+        [sense_ids[0]], |r| r.get(0),
+    ).unwrap();
+    assert_eq!(idx0, 0);
+
+    let idx1: i32 = conn.query_row(
+        "SELECT lang_sense_index FROM sense_lang_index WHERE sense_id = ?1 AND lang = 'eng'",
+        [sense_ids[1]], |r| r.get(0),
+    ).unwrap();
+    assert_eq!(idx1, 1);
+}

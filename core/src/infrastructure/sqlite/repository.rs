@@ -86,6 +86,7 @@ impl<'a> EntryRepository<'a> {
     }
 
     fn insert_senses(&self, entry: &Entry) -> Result<()> {
+        let lang_idx_map = sense_lang_indices(entry);
         for (index, s) in entry.senses.iter().enumerate() {
             self.conn.execute(
                 "INSERT INTO senses (entry_id, sense_index, pos, misc, dialects, info)
@@ -93,6 +94,16 @@ impl<'a> EntryRepository<'a> {
                 params![entry.id, index as i32, json(&s.pos), json(&s.misc), json(&s.dialects), json(&s.info)],
             )?;
             let sense_id = self.conn.last_insert_rowid();
+
+            if let Some(lang_entries) = lang_idx_map.get(&index) {
+                for (lang, lang_sense_index) in lang_entries {
+                    self.conn.execute(
+                        "INSERT INTO sense_lang_index (sense_id, lang, lang_sense_index)
+                         VALUES (?1, ?2, ?3)",
+                        params![sense_id, lang, *lang_sense_index as i32],
+                    )?;
+                }
+            }
 
             for g in &s.glosses {
                 self.conn.execute(
@@ -254,6 +265,28 @@ fn compute_freq_score(entry: &Entry) -> (i32, bool) {
         .max()
         .unwrap_or(0);
     (bonus + max_kanji + max_reading, has_common)
+}
+
+fn sense_lang_indices(entry: &Entry) -> HashMap<usize, Vec<(String, usize)>> {
+    use std::collections::HashSet;
+    let mut lang_to_indices: HashMap<String, Vec<usize>> = HashMap::new();
+    for (sense_idx, sense) in entry.senses.iter().enumerate() {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for gloss in &sense.glosses {
+            if let Some(lang) = &gloss.lang {
+                if seen.insert(lang.as_str()) {
+                    lang_to_indices.entry(lang.clone()).or_default().push(sense_idx);
+                }
+            }
+        }
+    }
+    let mut result: HashMap<usize, Vec<(String, usize)>> = HashMap::new();
+    for (lang, indices) in lang_to_indices {
+        for (pos, sense_idx) in indices.into_iter().enumerate() {
+            result.entry(sense_idx).or_default().push((lang.clone(), pos));
+        }
+    }
+    result
 }
 
 fn count_senses_by_lang(entry: &Entry) -> HashMap<String, usize> {
