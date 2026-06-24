@@ -13,7 +13,7 @@ entries ──< kanji_readings ──< reading_restrictions >── readings
         ──< readings
         ──< senses ──< glosses(lang) ──> glosses_fts (FTS5)
                    ──< cross_references
-                   ──< examples ──< example_sentences(lang)   ← currently unpopulated
+                   ──< examples ──< example_sentences(lang)
                    ──< sense_lang_index
         ──< entry_kanji >── kanji ──< kanji_meanings ──> kanji_meanings_fts (FTS5)
         ──< entry_sense_counts                        ──< kanji_svg
@@ -138,7 +138,7 @@ Cross-references from one sense to another entry or reading.
 
 ### `examples`
 
-Example sentences linked to a sense. **Currently unpopulated.** `JMdict.gz` (the multilingual distribution) does not embed inline example sentences. The schema is present for future use with `JMdict_e_examp.gz` (English-only JMDict with Tanaka Corpus sentences) or a similar source.
+Example sentences linked to a sense. Populated from `JMdict_e_examp.gz` (the English-only JMDict distribution with ~170k Tanaka Corpus sentences). `JMdict.gz` (the multilingual distribution) does not embed inline example sentences.
 
 | Column        | Type    | Nullable | Description |
 |---------------|---------|----------|-------------|
@@ -152,7 +152,7 @@ Example sentences linked to a sense. **Currently unpopulated.** `JMdict.gz` (the
 
 ### `example_sentences`
 
-Parallel translations of an example sentence. **Currently unpopulated** (depends on `examples`; see above).
+Parallel translations of an example sentence. Japanese (`jpn`) and English (`eng`) sentences come from `JMdict_e_examp.gz` during initial ingestion. Additional language translations are added by the Tatoeba step.
 
 | Column       | Type    | Nullable | Description |
 |--------------|---------|----------|-------------|
@@ -413,8 +413,6 @@ SELECT code FROM languages ORDER BY code;
 ```
 
 ### Get Tatoeba translations for an entry's examples
-
-> **Note:** The `examples` table is currently unpopulated (see the `examples` table description above). This query applies once example data is loaded.
 
 ```sql
 SELECT es.lang, es.text

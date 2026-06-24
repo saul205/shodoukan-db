@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use rusqlite::{Connection, Result, params};
+use rusqlite::{Connection, OptionalExtension, Result, params};
 use crate::domain::models::entry::Entry;
 use crate::domain::models::kanji::Kanji;
 
@@ -269,6 +269,36 @@ pub fn build_entry_kanji_relations(conn: &mut Connection) -> Result<()> {
     }
     tx.commit()?;
 
+    Ok(())
+}
+
+// ── Example sentences ─────────────────────────────────────────────────────────
+
+pub fn insert_entry_examples(conn: &Connection, entry: &Entry) -> Result<()> {
+    for (sense_index, sense) in entry.senses.iter().enumerate() {
+        if sense.examples.is_empty() { continue; }
+        let sense_id: Option<i64> = conn.query_row(
+            "SELECT id FROM senses WHERE entry_id = ?1 AND sense_index = ?2",
+            params![entry.id as i64, sense_index as i32],
+            |r| r.get(0),
+        ).optional()?;
+        let Some(sense_id) = sense_id else { continue };
+        for ex in &sense.examples {
+            conn.execute(
+                "INSERT INTO examples (sense_id, source_name, source_id, text)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![sense_id, ex.source_.name, ex.source_.id, ex.text],
+            )?;
+            let example_id = conn.last_insert_rowid();
+            for (lang, text) in &ex.sentences {
+                conn.execute(
+                    "INSERT INTO example_sentences (example_id, lang, text)
+                     VALUES (?1, ?2, ?3)",
+                    params![example_id, lang, text],
+                )?;
+            }
+        }
+    }
     Ok(())
 }
 

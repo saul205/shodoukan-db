@@ -45,13 +45,15 @@ Shared library crate with two layers:
 Binary crate that runs the full ingestion pipeline:
 
 1. Downloads and parses **JMDict** (`JMdict.gz`) — ~400k entries with words, readings, senses, and glosses in 8 languages (English, German, French, Russian, Spanish, Hungarian, Slovenian, Dutch). The multilingual file does not include inline example sentences.
-2. Downloads and parses **KANJIDIC2** — ~13k kanji: readings, meanings, grade, stroke count, frequency.
-3. Downloads **JLPT vocabulary and kanji lists**.
-4. Creates `shodoukan.sqlite`; inserts all data in transactional bulk operations; pre-computes `freq_score`, `has_common`, `sense_index`, per-language sense counts, and `entry_kanji`; populates the `languages` table from JMDict gloss languages.
-5. Enriches entries and kanji with **JLPT levels** from the downloaded lists.
-6. Downloads the latest **KanjiVG** release from GitHub — ~6,500 SVG stroke-order images stored in `kanji_svg`.
-7. Downloads **kradzip.zip** from the EDRDG FTP server, extracts RADKFILE and RADKFILE2 (EUC-JP decoded), and populates `radicals` and `kanji_radicals` for both JIS X 0208 and JIS X 0212 kanji sets.
-8. Downloads **Tatoeba** per-language sentence files for the languages found in `languages`, and links translations to any examples present in the `examples` table.
+2. Downloads and parses **JMDict examples** (`JMdict_e_examp.gz`) — English-only version with ~170k Tanaka Corpus example sentences embedded in senses.
+3. Downloads and parses **KANJIDIC2** — ~13k kanji: readings, meanings, grade, stroke count, frequency.
+4. Downloads **JLPT vocabulary and kanji lists**.
+5. Creates `shodoukan.sqlite`; inserts all data in transactional bulk operations; pre-computes `freq_score`, `has_common`, `sense_index`, per-language sense counts, and `entry_kanji`; populates the `languages` table from JMDict gloss languages.
+6. Inserts example sentences and their Japanese/English source sentences into `examples` and `example_sentences`.
+7. Enriches entries and kanji with **JLPT levels** from the downloaded lists.
+8. Downloads the latest **KanjiVG** release from GitHub — ~6,500 SVG stroke-order images stored in `kanji_svg`.
+9. Downloads **kradzip.zip** from the EDRDG FTP server, extracts RADKFILE and RADKFILE2 (EUC-JP decoded), and populates `radicals` and `kanji_radicals` for both JIS X 0208 and JIS X 0212 kanji sets.
+10. Downloads **Tatoeba** per-language sentence files for the languages found in `languages`, and links multilingual translations to the example sentences populated in step 6.
 
 See [docs/schema.md](docs/schema.md) for a full description of the database layout.
 
@@ -60,13 +62,12 @@ See [docs/schema.md](docs/schema.md) for a full description of the database layo
 | Source | File | Coverage |
 |--------|------|----------|
 | JMDict | `JMdict.gz` — ftp.edrdg.org | ~400k entries, 8 languages, no inline examples |
+| JMDict examples | `JMdict_e_examp.gz` — ftp.edrdg.org | ~170k Tanaka Corpus example sentences (English-only) |
 | KANJIDIC2 | `kanjidic2.xml.gz` — edrdg.org | ~13k kanji characters |
 | JLPT vocab/kanji | github.com/Bluskyo/JLPT_Vocabulary | N1–N5 level annotations |
 | KanjiVG | Latest release `-main.zip` — github.com/KanjiVG/kanjivg | ~6,500 SVG stroke-order images |
 | RADKFILE + RADKFILE2 | `kradzip.zip` — ftp.edrdg.org | Radical decomposition, JIS X 0208 + JIS X 0212 |
 | Tatoeba | Per-language `.tsv.bz2` — downloads.tatoeba.org | Multilingual sentence translations |
-
-> **Note:** `JMdict_e_examp.gz` (English-only JMDict with Tanaka Corpus example sentences) is not currently used. The `examples` and `example_sentences` schema tables are present for future use.
 
 JMDict and KANJIDIC2 are maintained by the [Electronic Dictionary Research and Development Group (EDRDG)](https://www.edrdg.org/) and distributed under a [Creative Commons Attribution-ShareAlike 4.0 licence](https://creativecommons.org/licenses/by-sa/4.0/).
 

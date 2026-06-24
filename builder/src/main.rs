@@ -16,11 +16,11 @@ use core::infrastructure::sqlite::{
     connection,
     repository::{
         EntryRepository, KanjiRepository, build_entry_kanji_relations,
-        insert_tatoeba_translations,
+        insert_entry_examples, insert_tatoeba_translations,
     },
 };
 
-const TOTAL_STEPS: usize = 9;
+const TOTAL_STEPS: usize = 11;
 const PROGRESS_EVERY: usize = 500;
 
 fn main() {
@@ -33,14 +33,24 @@ fn main() {
     let entries = jmdict.parse(jmdict.fetch());
     println!("  {} entries parsed", entries.len());
 
-    step(2, TOTAL_STEPS, "Fetching KANJIDIC2...");
+    step(2, TOTAL_STEPS, "Fetching JMDict examples...");
+    let jmdict_examp = JMDictSource {
+        ds_url: String::from("http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz"),
+    };
+    let example_entries = jmdict_examp.parse(jmdict_examp.fetch());
+    let entries_with_examples = example_entries.iter()
+        .filter(|e| e.senses.iter().any(|s| !s.examples.is_empty()))
+        .count();
+    println!("  {} entries with example sentences parsed", entries_with_examples);
+
+    step(3, TOTAL_STEPS, "Fetching KANJIDIC2...");
     let kanjidic = KanjiDicSource {
         ds_url: String::from("http://www.edrdg.org/kanjidic/kanjidic2.xml.gz"),
     };
     let kanjis = kanjidic.parse(kanjidic.fetch());
     println!("  {} kanji parsed", kanjis.len());
 
-    step(3, TOTAL_STEPS, "Fetching JLPT data...");
+    step(4, TOTAL_STEPS, "Fetching JLPT data...");
     let jlpt = JlptSource;
     let jlpt_vocab = jlpt.fetch_vocab();
     let jlpt_kanji = jlpt.fetch_kanji();
@@ -50,9 +60,9 @@ fn main() {
         jlpt_kanji.len()
     );
 
-    // ── Step 4: Open database ─────────────────────────────────────────────────
+    // ── Step 5: Open database ─────────────────────────────────────────────────
 
-    step(4, TOTAL_STEPS, "Creating database...");
+    step(5, TOTAL_STEPS, "Creating database...");
     let db_path = "shodoukan.sqlite";
     if std::path::Path::new(db_path).exists() {
         std::fs::remove_file(db_path).expect("failed to remove existing database");
@@ -60,9 +70,9 @@ fn main() {
     let mut conn = connection::open(db_path).expect("failed to open database");
     println!("  {}", db_path);
 
-    // ── Step 5: Insert kanji and entries ──────────────────────────────────────
+    // ── Step 6: Insert kanji and entries ──────────────────────────────────────
 
-    step(5, TOTAL_STEPS, "Inserting kanji and entries...");
+    step(6, TOTAL_STEPS, "Inserting kanji and entries...");
     {
         let tx = conn.transaction().expect("failed to begin transaction");
         let repo = KanjiRepository::new(&tx);
@@ -93,9 +103,24 @@ fn main() {
     build_entry_kanji_relations(&mut conn).expect("failed to build entry-kanji relations");
     println!(" done");
 
-    // ── Step 6: JLPT enrichment ───────────────────────────────────────────────
+    // ── Step 7: Insert example sentences ─────────────────────────────────────
 
-    step(6, TOTAL_STEPS, "Enriching with JLPT levels...");
+    step(7, TOTAL_STEPS, "Inserting example sentences...");
+    {
+        let tx = conn.transaction().expect("failed to begin transaction");
+        for (i, entry) in example_entries.iter().enumerate() {
+            if i % PROGRESS_EVERY == 0 {
+                print_progress("Examples", i, example_entries.len());
+            }
+            insert_entry_examples(&tx, entry).expect("failed to insert examples");
+        }
+        tx.commit().expect("failed to commit examples transaction");
+        finish_progress("Examples", example_entries.len());
+    }
+
+    // ── Step 8: JLPT enrichment ───────────────────────────────────────────────
+
+    step(8, TOTAL_STEPS, "Enriching with JLPT levels...");
     {
         let tx = conn.transaction().expect("failed to begin transaction");
         let repo = EntryRepository::new(&tx);
@@ -124,9 +149,9 @@ fn main() {
         finish_progress("Kanji levels", jlpt_kanji.len());
     }
 
-    // ── Step 7: KanjiVG stroke images ────────────────────────────────────────
+    // ── Step 9: KanjiVG stroke images ────────────────────────────────────────
 
-    step(7, TOTAL_STEPS, "Fetching KanjiVG stroke images...");
+    step(9, TOTAL_STEPS, "Fetching KanjiVG stroke images...");
     let svgs = KanjiVgSource.fetch_and_parse();
     {
         let tx = conn.transaction().expect("failed to begin transaction");
@@ -141,9 +166,9 @@ fn main() {
         finish_progress("SVGs", svgs.len());
     }
 
-    // ── Step 8: Radical decomposition ────────────────────────────────────────
+    // ── Step 10: Radical decomposition ───────────────────────────────────────
 
-    step(8, TOTAL_STEPS, "Fetching radical decomposition (RADKFILE)...");
+    step(10, TOTAL_STEPS, "Fetching radical decomposition (RADKFILE)...");
     let (radicals, kanji_radicals) = RadkfileSource.fetch_and_parse();
     {
         let tx = conn.transaction().expect("failed to begin transaction");
@@ -172,9 +197,9 @@ fn main() {
         finish_progress("Kanji-radical pairs", kanji_radicals.len());
     }
 
-    // ── Step 9: Tatoeba multilingual translations ─────────────────────────────
+    // ── Step 11: Tatoeba multilingual translations ────────────────────────────
 
-    step(9, TOTAL_STEPS, "Fetching Tatoeba translations...");
+    step(11, TOTAL_STEPS, "Fetching Tatoeba translations...");
     let langs: Vec<String> = {
         let mut stmt = conn
             .prepare("SELECT code FROM languages")
