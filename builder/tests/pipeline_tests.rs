@@ -140,12 +140,12 @@ fn jmdict_fts_indexes_english_glosses() {
 #[test]
 fn jmdict_entry_kanji_junction_populated_for_cjk_entries() {
     let entries = parse_jmdict();
-    let conn = connection::open_in_memory().unwrap();
+    let mut conn = connection::open_in_memory().unwrap();
     let repo = EntryRepository::new(&conn);
     for entry in &entries {
         repo.insert(entry).unwrap();
     }
-    build_entry_kanji_relations(&conn).unwrap();
+    build_entry_kanji_relations(&mut conn).unwrap();
 
     // 明白 contains 明 (U+660E) and 白 (U+767D), both CJK Unified Ideographs
     let count: i64 = conn
@@ -308,7 +308,7 @@ fn kanjidic_readings_stored_as_json_arrays() {
 // ── Reference entity: all DB fields ──────────────────────────────────────────
 
 fn populated_db() -> rusqlite::Connection {
-    let conn = connection::open_in_memory().unwrap();
+    let mut conn = connection::open_in_memory().unwrap();
     let kanji_repo = KanjiRepository::new(&conn);
     for k in &parse_kanjidic() {
         kanji_repo.insert(k).unwrap();
@@ -317,7 +317,7 @@ fn populated_db() -> rusqlite::Connection {
     for e in &parse_jmdict() {
         entry_repo.insert(e).unwrap();
     }
-    build_entry_kanji_relations(&conn).unwrap();
+    build_entry_kanji_relations(&mut conn).unwrap();
     conn
 }
 

@@ -106,6 +106,9 @@ impl<'a> EntryRepository<'a> {
             }
 
             for g in &s.glosses {
+                if let Some(lang) = &g.lang {
+                    insert_language(self.conn, lang)?;
+                }
                 self.conn.execute(
                     "INSERT INTO glosses (sense_id, text, type, lang) VALUES (?1, ?2, ?3, ?4)",
                     params![sense_id, g.text, g.type_, g.lang],
@@ -173,6 +176,34 @@ impl<'a> KanjiRepository<'a> {
         Ok(())
     }
 
+    pub fn insert_svg(&self, literal: &str, svg: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO kanji_svg (literal, svg) VALUES (?1, ?2)",
+            params![literal, svg],
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_radical(&self, literal: &str, strokes: u32) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO radicals (literal, strokes) VALUES (?1, ?2)",
+            params![literal, strokes],
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_kanji_radical(&self, kanji_literal: &str, radical_literal: &str) -> Result<()> {
+        // Skip pairs where the kanji or radical isn't in our DB (same FK workaround as insert_svg)
+        self.conn.execute(
+            "INSERT OR IGNORE INTO kanji_radicals (kanji_literal, radical_literal)
+             SELECT ?1, ?2
+             WHERE EXISTS (SELECT 1 FROM kanji   WHERE literal = ?1)
+               AND EXISTS (SELECT 1 FROM radicals WHERE literal = ?2)",
+            params![kanji_literal, radical_literal],
+        )?;
+        Ok(())
+    }
+
     pub fn insert(&self, kanji: &Kanji) -> Result<()> {
         self.conn.execute(
             "INSERT OR IGNORE INTO kanji
@@ -201,14 +232,25 @@ impl<'a> KanjiRepository<'a> {
     }
 }
 
+// ── Language registry ─────────────────────────────────────────────────────────
+
+pub fn insert_language(conn: &Connection, code: &str) -> Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO languages (code) VALUES (?1)",
+        params![code],
+    )?;
+    Ok(())
+}
+
 // ── Entry-Kanji Relations ─────────────────────────────────────────────────────
 
-pub fn build_entry_kanji_relations(conn: &Connection) -> Result<()> {
-    let mut stmt = conn.prepare("SELECT entry_id, kanji FROM kanji_readings")?;
-
-    let rows: Vec<(i64, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .collect::<Result<_>>()?;
+pub fn build_entry_kanji_relations(conn: &mut Connection) -> Result<()> {
+    // Collect rows first so the prepared statement is dropped before we open a transaction
+    let rows: Vec<(i64, String)> = {
+        let mut stmt = conn.prepare("SELECT entry_id, kanji FROM kanji_readings")?;
+        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<_>>()?
+    };
 
     let mut pairs: std::collections::HashSet<(i64, String)> = std::collections::HashSet::new();
     for (entry_id, kanji) in rows {
@@ -217,13 +259,34 @@ pub fn build_entry_kanji_relations(conn: &Connection) -> Result<()> {
         }
     }
 
-    for (entry_id, literal) in pairs {
-        conn.execute(
+    // All inserts in a single transaction — without this each auto-commit hits disk
+    let tx = conn.transaction()?;
+    for (entry_id, literal) in &pairs {
+        tx.execute(
             "INSERT OR REPLACE INTO entry_kanji (entry_id, literal) VALUES (?1, ?2)",
             params![entry_id, literal],
         )?;
     }
+    tx.commit()?;
 
+    Ok(())
+}
+
+// ── Tatoeba translations ──────────────────────────────────────────────────────
+
+pub struct TatoebaTranslation {
+    pub example_id: i64,
+    pub lang: String,
+    pub text: String,
+}
+
+pub fn insert_tatoeba_translations(conn: &Connection, translations: &[TatoebaTranslation]) -> Result<()> {
+    for t in translations {
+        conn.execute(
+            "INSERT OR IGNORE INTO example_sentences (example_id, lang, text) VALUES (?1, ?2, ?3)",
+            params![t.example_id, t.lang, t.text],
+        )?;
+    }
     Ok(())
 }
 

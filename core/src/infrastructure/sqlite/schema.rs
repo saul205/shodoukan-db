@@ -144,4 +144,26 @@ pub const CREATE_SCHEMA: &str = "
         PRIMARY KEY (sense_id, lang)
     );
     CREATE INDEX IF NOT EXISTS idx_sense_lang_index_sense ON sense_lang_index(sense_id);
+
+    CREATE TABLE IF NOT EXISTS languages (
+        code TEXT PRIMARY KEY
+    );
+
+    CREATE TABLE IF NOT EXISTS kanji_svg (
+        literal TEXT PRIMARY KEY,
+        svg     TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS radicals (
+        literal TEXT    PRIMARY KEY,
+        strokes INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS kanji_radicals (
+        kanji_literal   TEXT NOT NULL REFERENCES kanji(literal),
+        radical_literal TEXT NOT NULL REFERENCES radicals(literal),
+        PRIMARY KEY (kanji_literal, radical_literal)
+    );
+    CREATE INDEX IF NOT EXISTS idx_kanji_radicals_kanji   ON kanji_radicals(kanji_literal);
+    CREATE INDEX IF NOT EXISTS idx_kanji_radicals_radical ON kanji_radicals(radical_literal);
 ";

@@ -1,6 +1,6 @@
 # Database schema
 
-`shodoukan.sqlite` contains 14 regular tables, 2 FTS5 virtual tables, and 2 triggers. Tables are grouped into two domains: dictionary entries (from JMDict) and kanji (from KANJIDIC2). A junction table links both domains.
+`shodoukan.sqlite` contains 18 regular tables, 2 FTS5 virtual tables, and 2 triggers. Tables are grouped into two domains: dictionary entries (from JMDict) and kanji (from KANJIDIC2). Junction tables link both domains.
 
 Arrays (priority tags, part-of-speech, readings, etc.) are stored as JSON strings inside `TEXT` columns (e.g. `'["news1","ichi1"]'`).
 
@@ -11,12 +11,14 @@ Arrays (priority tags, part-of-speech, readings, etc.) are stored as JSON string
 ```
 entries ──< kanji_readings ──< reading_restrictions >── readings
         ──< readings
-        ──< senses ──< glosses ──> glosses_fts (FTS5)
+        ──< senses ──< glosses(lang) ──> glosses_fts (FTS5)
                    ──< cross_references
-                   ──< examples ──< example_sentences
+                   ──< examples ──< example_sentences(lang)   ← currently unpopulated
                    ──< sense_lang_index
         ──< entry_kanji >── kanji ──< kanji_meanings ──> kanji_meanings_fts (FTS5)
-        ──< entry_sense_counts
+        ──< entry_sense_counts                        ──< kanji_svg
+                                                      ──< kanji_radicals >── radicals
+languages  (populated from lang values in glosses)
 ```
 
 ---
@@ -136,13 +138,13 @@ Cross-references from one sense to another entry or reading.
 
 ### `examples`
 
-Example sentences linked to a sense. Sourced from the Tatoeba corpus embedded in JMDict.
+Example sentences linked to a sense. **Currently unpopulated.** `JMdict.gz` (the multilingual distribution) does not embed inline example sentences. The schema is present for future use with `JMdict_e_examp.gz` (English-only JMDict with Tanaka Corpus sentences) or a similar source.
 
 | Column        | Type    | Nullable | Description |
 |---------------|---------|----------|-------------|
 | `id`          | INTEGER | NO       | Auto-incremented primary key |
 | `sense_id`    | INTEGER | NO       | FK → `senses(id)` |
-| `source_name` | TEXT    | NO       | Corpus name (e.g. `"tat"`) |
+| `source_name` | TEXT    | NO       | Corpus name (e.g. `"tat"` for Tatoeba) |
 | `source_id`   | TEXT    | YES      | Sentence identifier within the corpus |
 | `text`        | TEXT    | NO       | Japanese sentence text |
 
@@ -150,7 +152,7 @@ Example sentences linked to a sense. Sourced from the Tatoeba corpus embedded in
 
 ### `example_sentences`
 
-Parallel translations of an example sentence.
+Parallel translations of an example sentence. **Currently unpopulated** (depends on `examples`; see above).
 
 | Column       | Type    | Nullable | Description |
 |--------------|---------|----------|-------------|
@@ -199,7 +201,7 @@ Full-text search is available via `kanji_meanings_fts` (see below).
 
 ---
 
-## Junction table
+## Junction and auxiliary tables
 
 ### `entry_kanji`
 
@@ -207,9 +209,8 @@ Links dictionary entries to the individual kanji characters they contain. Popula
 
 | Column     | Type    | Nullable | Description |
 |------------|---------|----------|-------------|
-| `entry_id`       | INTEGER | NO | FK → `entries(id)` |
-| `literal`        | TEXT    | NO | A kanji character found in this entry |
-| `priority_score` | INTEGER | NO | Aggregate priority score derived from the entry's priority tags (e.g. `ichi1`=1000, `news1`=400). Higher = more common. |
+| `entry_id` | INTEGER | NO       | FK → `entries(id)` |
+| `literal`  | TEXT    | NO       | A kanji character found in this entry |
 
 Primary key: `(entry_id, literal)`.
 Index: `idx_entry_kanji_literal` on `literal` (supports kanji → entries lookups).
@@ -245,6 +246,54 @@ Primary key: `(sense_id, lang)`.
 Index: `idx_sense_lang_index_sense` on `sense_id`.
 
 **Example** — 食べる has 10 senses, one of which ("comer") contains only a Spanish gloss and is at global `sense_index = 9`. Its `lang_sense_index` for `spa` is `0` (the first and only Spanish sense), while its `lang_sense_index` for `eng` is not present (no English gloss in that sense).
+
+---
+
+### `languages`
+
+Registry of all language codes present in the database. Populated automatically during JMDict ingestion from the `lang` attribute on `<gloss>` elements — no pre-defined list. After a full build it contains the 8 languages present in `JMdict.gz`: `dut`, `eng`, `fre`, `ger`, `hun`, `rus`, `slv`, `spa`. The Tatoeba step reads this table to decide which per-language sentence files to download. Frontend applications can query this table to discover what filter options to present.
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `code` | TEXT | NO       | ISO 639-3 / BCP 47 language code (primary key, e.g. `"eng"`, `"spa"`) |
+
+---
+
+## Kanji enrichment tables
+
+### `kanji_svg`
+
+SVG stroke-order images sourced from [KanjiVG](https://kanjivg.tagaini.net/) (non-variant files only; all `kvg:` attributes preserved for stroke animation and grid rendering). One row per character. No FK to `kanji` — KanjiVG covers characters outside KANJIDIC2.
+
+| Column    | Type | Nullable | Description |
+|-----------|------|----------|-------------|
+| `literal` | TEXT | NO       | The character (primary key) |
+| `svg`     | TEXT | NO       | Full SVG file content as a UTF-8 string |
+
+---
+
+### `radicals`
+
+All radical literals with their stroke count. Sourced from `kradzip.zip` (EDRDG FTP), which contains RADKFILE (JIS X 0208) and RADKFILE2 (JIS X 0212), decoded from EUC-JP. Covers both radicals that are standalone kanji (e.g. 木, 水) and variant forms that are not (e.g. 亻, 氵). Whether a radical is also a kanji can be determined at query time by joining to `kanji`.
+
+| Column    | Type    | Nullable | Description |
+|-----------|---------|----------|-------------|
+| `literal` | TEXT    | NO       | The radical character (primary key) |
+| `strokes` | INTEGER | NO       | Number of strokes |
+
+---
+
+### `kanji_radicals`
+
+Many-to-many junction linking kanji to the radicals they contain. Populated from RADKFILE. Both lookup directions are indexed: find radicals of a kanji, or find all kanji that use a given radical.
+
+| Column           | Type | Nullable | Description |
+|------------------|------|----------|-------------|
+| `kanji_literal`  | TEXT | NO       | FK → `kanji(literal)` |
+| `radical_literal`| TEXT | NO       | FK → `radicals(literal)` |
+
+Primary key: `(kanji_literal, radical_literal)`.
+Indexes: `idx_kanji_radicals_kanji` on `kanji_literal`, `idx_kanji_radicals_radical` on `radical_literal`.
 
 ---
 
@@ -327,4 +376,51 @@ SELECT literal, on_readings, kun_readings
 FROM kanji
 WHERE jlpt = 5
 ORDER BY freq;
+```
+
+### Get radicals of a kanji
+
+```sql
+SELECT r.literal, r.strokes
+FROM kanji_radicals kr
+JOIN radicals r ON r.literal = kr.radical_literal
+WHERE kr.kanji_literal = '食'
+ORDER BY r.strokes;
+```
+
+### Find all kanji that share a radical
+
+```sql
+SELECT kr.kanji_literal
+FROM kanji_radicals kr
+WHERE kr.radical_literal = '食'
+ORDER BY kr.kanji_literal;
+```
+
+### Check if a radical is also a standalone kanji
+
+```sql
+SELECT r.literal, r.strokes, k.literal IS NOT NULL AS is_kanji
+FROM radicals r
+LEFT JOIN kanji k ON k.literal = r.literal
+WHERE r.literal = '人';
+```
+
+### List available languages in the database
+
+```sql
+SELECT code FROM languages ORDER BY code;
+```
+
+### Get Tatoeba translations for an entry's examples
+
+> **Note:** The `examples` table is currently unpopulated (see the `examples` table description above). This query applies once example data is loaded.
+
+```sql
+SELECT es.lang, es.text
+FROM example_sentences es
+JOIN examples e ON e.id = es.example_id
+JOIN senses s ON s.id = e.sense_id
+WHERE s.entry_id = 1169420
+ORDER BY es.lang;
 ```
