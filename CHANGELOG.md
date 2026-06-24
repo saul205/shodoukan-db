@@ -4,7 +4,48 @@ All notable changes to this project are documented here.
 
 ---
 
-## [0.5.1] — 2026-06-19
+## [1.0.0] — 2026-06-25
+
+### Added
+
+**Example sentences (Tanaka Corpus)**
+- Step 2 of the pipeline now fetches and parses `JMdict_e_examp.gz` — the English-only JMDict distribution which embeds ~170k Tanaka Corpus example sentences directly in `<sense>` elements. `JMdict.gz` (the multilingual file) does not include inline examples.
+- `insert_entry_examples` free function in `repository.rs` — given an `Entry` from `JMdict_e_examp.gz`, looks up each sense's `id` by `(entry_id, sense_index)` and inserts into `examples` and `example_sentences`; senses with no examples are skipped silently
+- `pipeline_tests.rs`: `jmdict_examples_inserted_into_db` — verifies that examples and their `jpn`/`eng` sentence pairs are inserted correctly when calling `insert_entry_examples`
+
+**KanjiVG stroke images**
+- `kanji_svg` table — stores full SVG content per kanji character as TEXT; sourced from the latest KanjiVG GitHub release (`-main.zip` asset: non-variant files, all `kvg:` attributes preserved for stroke animation)
+- `KanjiVgSource::fetch_and_parse` — queries the GitHub API for the latest release URL (no hardcoded version), downloads and extracts the ZIP, returns `Vec<KanjiSvg>`
+- `KanjiRepository::insert_svg` — idempotent insert into `kanji_svg`
+
+**Radical decomposition**
+- `radicals` table — all radical literals and stroke counts from RADKFILE and RADKFILE2
+- `kanji_radicals` junction table (M:N) — links `kanji` to `radicals`; both directions indexed (`idx_kanji_radicals_kanji`, `idx_kanji_radicals_radical`)
+- `RadkfileSource::fetch_and_parse` — downloads `kradzip.zip` from the EDRDG FTP archive (contains both RADKFILE for JIS X 0208 and RADKFILE2 for JIS X 0212); decodes each file from EUC-JP to UTF-8 using `encoding_rs`; single streaming pass returns `(Vec<Radical>, Vec<KanjiRadical>)`
+- `KanjiRepository::insert_radical`, `insert_kanji_radical`
+
+**Multilingual Tatoeba translations**
+- `languages` table — auto-populated from gloss language codes encountered during JMDict ingestion; frontend can query it to discover available filter languages; Tatoeba step reads it to decide which per-language sentence files to download (no hardcoded list)
+- `TatoebaSource::fetch_translations` — downloads Tatoeba `links.tar.bz2` to find translations of JMDict-curated sentences, then downloads per-language `.tsv.bz2` sentence files for each language in the `languages` table; links translations to existing `examples` rows by `source_id`
+- `insert_tatoeba_translations` free function
+- `insert_language` free function — `INSERT OR IGNORE INTO languages`; called from `EntryRepository::insert_senses` per gloss lang
+
+**Progress display**
+- `builder/src/progress.rs` — `step`, `print_progress`, and `finish_progress` helpers for consistent pipeline output
+
+**Tests**
+- `builder/tests/kanjivg_source_tests.rs` — 4 unit tests for KanjiVG ZIP parsing using in-memory ZIPs
+- `builder/tests/radkfile_source_tests.rs` — 4 unit tests for `RadkfileSource::parse` using in-memory string data
+
+### Changed
+- Pipeline step count: 9 → 11 (`TOTAL_STEPS = 11`); steps renumbered to accommodate the new JMdict_e_examp.gz fetch (step 2) and example insertion (step 7)
+- `docs/schema.md`: table count 14 → 18, all new tables documented, ER diagram updated, "currently unpopulated" caveats on `examples` and `example_sentences` removed, new query examples added
+- `README.md`: pipeline description updated (10 steps), `JMdict_e_examp.gz` added to data sources table, "not currently used" note removed
+- `builder/Cargo.toml`: added `bzip2 = "0.4"`, `tar = "0.4"`, `zip = "2"`, `encoding_rs = "0.8"`, `json` feature on `reqwest`
+
+---
+
+## [0.5.1] — 2026-06-20
 
 ### Added
 - `idx_glosses_lang_sense` — composite index on `glosses(lang, sense_id)` for efficient language-filtered JOIN queries
@@ -20,15 +61,10 @@ All notable changes to this project are documented here.
 - Release workflow now uses the git tag as the release ref when the commit is tagged (title always shows the build date)
 - `builder` and `core` `Cargo.toml` versions bumped to `0.5.1`
 - `build_entry_kanji_relations` simplified: no longer computes per-entry priority scores; now collects unique `(entry_id, literal)` pairs only
-- `docs/schema.md` updated: table count 12 → 13, new columns and table documented, query examples updated
+- `docs/schema.md` updated: table count 12 → 14, new columns and tables documented, query examples updated
 
 ### Removed
 - `entry_kanji.priority_score` column — was unused; removed along with the `score_priority` helper in `repository.rs`
-
-### Planned
-- Query interface (API or CLI)
-- Search by reading, kanji, or meaning
-- Hyperlinks between entries and individual kanji characters
 
 ---
 
