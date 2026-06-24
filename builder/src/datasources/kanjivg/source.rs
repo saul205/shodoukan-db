@@ -3,6 +3,7 @@ use zip::ZipArchive;
 
 const GITHUB_API_URL: &str = "https://api.github.com/repos/KanjiVG/kanjivg/releases/latest";
 
+
 pub struct KanjiSvg {
     pub literal: String,
     pub svg: String,
@@ -13,13 +14,9 @@ pub struct KanjiVgSource;
 impl KanjiVgSource {
     pub fn fetch_and_parse(&self) -> Vec<KanjiSvg> {
         println!("Fetching latest KanjiVG release info...");
-        let release: serde_json::Value = reqwest::blocking::Client::new()
-            .get(GITHUB_API_URL)
-            .header("User-Agent", "shodoukan-db-builder")
-            .send()
-            .expect("failed to fetch KanjiVG release info")
-            .json()
-            .expect("failed to parse KanjiVG release JSON");
+        let release_bytes = crate::http::fetch_bytes(GITHUB_API_URL);
+        let release: serde_json::Value =
+            serde_json::from_slice(&release_bytes).expect("failed to parse KanjiVG release JSON");
 
         let zip_url = release["assets"]
             .as_array()
@@ -32,13 +29,7 @@ impl KanjiVgSource {
             .expect("no -main.zip asset in KanjiVG release");
 
         println!("Downloading KanjiVG from {}...", zip_url);
-        let bytes = reqwest::blocking::Client::new()
-            .get(&zip_url)
-            .header("User-Agent", "shodoukan-db-builder")
-            .send()
-            .expect("failed to download KanjiVG ZIP")
-            .bytes()
-            .expect("failed to read KanjiVG ZIP bytes");
+        let bytes = crate::http::fetch_bytes(&zip_url);
 
         let results = Self::parse_zip(Cursor::new(bytes));
         println!("Parsed {} kanji SVGs", results.len());

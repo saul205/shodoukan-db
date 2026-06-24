@@ -26,10 +26,7 @@ impl TatoebaSource {
             .collect();
 
         println!("Downloading Tatoeba sentence links...");
-        let links_bytes = reqwest::blocking::get(LINKS_URL)
-            .expect("failed to fetch Tatoeba links")
-            .bytes()
-            .expect("failed to read Tatoeba links bytes");
+        let links_bytes = crate::http::fetch_bytes(LINKS_URL);
 
         let bz = BzDecoder::new(Cursor::new(links_bytes));
         let mut archive = Archive::new(bz);
@@ -90,16 +87,10 @@ impl TatoebaSource {
             let url = SENTENCES_URL.replace("{lang}", lang);
             println!("Downloading Tatoeba {} sentences...", lang);
 
-            let bytes = match reqwest::blocking::get(&url) {
-                Ok(resp) if resp.status().is_success() => {
-                    resp.bytes().expect("failed to read Tatoeba sentence bytes")
-                }
-                Ok(resp) => {
-                    println!("  Skipping {} (HTTP {})", lang, resp.status());
-                    continue;
-                }
-                Err(e) => {
-                    println!("  Skipping {} ({})", lang, e);
+            let bytes = match crate::http::try_fetch_bytes(&url) {
+                Some(b) => b,
+                None => {
+                    println!("  Skipping {} (not available)", lang);
                     continue;
                 }
             };
