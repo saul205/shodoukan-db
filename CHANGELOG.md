@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [Unreleased]
+## [1.0.0] — 2026-06-25
 
 ### Added
 
@@ -65,11 +65,6 @@ All notable changes to this project are documented here.
 
 ### Removed
 - `entry_kanji.priority_score` column — was unused; removed along with the `score_priority` helper in `repository.rs`
-
-### Planned
-- Query interface (API or CLI)
-- Search by reading, kanji, or meaning
-- Hyperlinks between entries and individual kanji characters
 
 ---
 

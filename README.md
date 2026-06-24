@@ -1,6 +1,8 @@
-# shodoukan
+# shodoukan-db
 
-A Japanese-English dictionary database built in Rust. Downloads and parses [JMDict](https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary_Project) and [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project) from EDRDG, enriches entries with JLPT levels and radical decomposition, stores KanjiVG stroke images, and writes everything into a local SQLite database optimised for fast lookups and full-text search.
+Builds `shodoukan.sqlite` — a self-contained SQLite database for Japanese dictionary lookups in multiple languages. Downloads and parses [JMDict](https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary_Project) and [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project) from EDRDG, enriches entries with JLPT levels, radical decomposition, KanjiVG stroke images, and Tatoeba multilingual example sentence translations.
+
+The database is published as a GitHub Release asset on every tagged release and is the data foundation for [shodoukan](https://github.com/saul205/shodoukan) — a multilingual Japanese dictionary application with a Python library, REST API, and web interface.
 
 ## Architecture
 
@@ -101,6 +103,16 @@ cargo test
 ```
 
 The generated `shodoukan.sqlite` is roughly 214 MB and supports full-text search over English glosses and kanji meanings via FTS5.
+
+## Ecosystem
+
+`shodoukan-db` is the data layer for [shodoukan](https://github.com/saul205/shodoukan), which provides:
+
+- A **Python library** for dictionary lookups by reading, kanji, or English meaning
+- A **FastAPI REST API** exposing search and entry retrieval endpoints
+- A **web interface** for interactive dictionary lookups
+
+Applications built on top of `shodoukan.sqlite` only need the released database file — no Rust toolchain required.
 
 ## CI/CD
 
