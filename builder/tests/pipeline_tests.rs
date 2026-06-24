@@ -4,7 +4,7 @@ use std::io::BufReader;
 use builder::datasources::jmdict::parser::JMDictSource;
 use builder::datasources::kanjidic::parser::KanjiDicSource;
 use builder::traits::datasource::Datasource;
-use core::infrastructure::sqlite::{connection, repository::{EntryRepository, KanjiRepository, build_entry_kanji_relations}};
+use core::infrastructure::sqlite::{connection, repository::{EntryRepository, KanjiRepository, build_entry_kanji_relations, insert_entry_examples}};
 
 const JMDICT_FIXTURE: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/jmdict_sample.xml");
@@ -140,12 +140,12 @@ fn jmdict_fts_indexes_english_glosses() {
 #[test]
 fn jmdict_entry_kanji_junction_populated_for_cjk_entries() {
     let entries = parse_jmdict();
-    let conn = connection::open_in_memory().unwrap();
+    let mut conn = connection::open_in_memory().unwrap();
     let repo = EntryRepository::new(&conn);
     for entry in &entries {
         repo.insert(entry).unwrap();
     }
-    build_entry_kanji_relations(&conn).unwrap();
+    build_entry_kanji_relations(&mut conn).unwrap();
 
     // 明白 contains 明 (U+660E) and 白 (U+767D), both CJK Unified Ideographs
     let count: i64 = conn
@@ -308,7 +308,7 @@ fn kanjidic_readings_stored_as_json_arrays() {
 // ── Reference entity: all DB fields ──────────────────────────────────────────
 
 fn populated_db() -> rusqlite::Connection {
-    let conn = connection::open_in_memory().unwrap();
+    let mut conn = connection::open_in_memory().unwrap();
     let kanji_repo = KanjiRepository::new(&conn);
     for k in &parse_kanjidic() {
         kanji_repo.insert(k).unwrap();
@@ -317,7 +317,7 @@ fn populated_db() -> rusqlite::Connection {
     for e in &parse_jmdict() {
         entry_repo.insert(e).unwrap();
     }
-    build_entry_kanji_relations(&conn).unwrap();
+    build_entry_kanji_relations(&mut conn).unwrap();
     conn
 }
 
@@ -453,4 +453,86 @@ fn kanjidic_reference_kanji_all_db_fields() {
             .collect()
     };
     assert_eq!(fr_meanings, ["Asie", "suivant", "sub-", "sous-"]);
+}
+
+// ── Example sentences pipeline ────────────────────────────────────────────────
+
+#[test]
+fn jmdict_examples_inserted_into_db() {
+    use core::domain::models::entry::{Entry, Example, Gloss, Reading, Sense, Source};
+    use std::collections::HashMap;
+
+    let conn = connection::open_in_memory().unwrap();
+
+    // Insert a minimal entry simulating JMdict.gz (no examples)
+    let entry_no_examples = Entry {
+        id: 9_999_999,
+        jlpt: None,
+        kanji_readings: vec![],
+        readings: vec![Reading {
+            text: "テスト".to_string(),
+            priority: vec![],
+            no_kanji: false,
+            info: vec![],
+        }],
+        senses: vec![Sense {
+            pos: vec![],
+            misc: vec![],
+            refs: vec![],
+            glosses: vec![Gloss {
+                text: "test".to_string(),
+                type_: None,
+                lang: Some("eng".to_string()),
+            }],
+            info: vec![],
+            dialects: vec![],
+            examples: vec![],
+        }],
+    };
+    EntryRepository::new(&conn).insert(&entry_no_examples).unwrap();
+
+    // Build an Entry simulating JMdict_e_examp.gz (same entry_id, with examples)
+    let mut sentences = HashMap::new();
+    sentences.insert("jpn".to_string(), "日本語の文。".to_string());
+    sentences.insert("eng".to_string(), "An English sentence.".to_string());
+    let entry_with_examples = Entry {
+        id: 9_999_999,
+        jlpt: None,
+        kanji_readings: vec![],
+        readings: vec![],
+        senses: vec![Sense {
+            pos: vec![],
+            misc: vec![],
+            refs: vec![],
+            glosses: vec![],
+            info: vec![],
+            dialects: vec![],
+            examples: vec![Example {
+                source_: Source { name: "tat".to_string(), id: Some("42".to_string()) },
+                text: "テスト".to_string(),
+                sentences,
+            }],
+        }],
+    };
+
+    insert_entry_examples(&conn, &entry_with_examples).unwrap();
+
+    let example_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM examples", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(example_count, 1);
+
+    let sentence_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM example_sentences", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(sentence_count, 2); // jpn + eng
+
+    let source_id: Option<String> = conn
+        .query_row(
+            "SELECT source_id FROM examples WHERE source_name = 'tat'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(source_id.as_deref(), Some("42"));
 }
