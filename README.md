@@ -47,7 +47,7 @@ Shared library crate with two layers:
 Binary crate that runs the full ingestion pipeline:
 
 1. Downloads and parses **JMDict** (`JMdict.gz`) — ~400k entries with words, readings, senses, and glosses in 8 languages (English, German, French, Russian, Spanish, Hungarian, Slovenian, Dutch). The multilingual file does not include inline example sentences.
-2. Downloads and parses **JMDict examples** (`JMdict_e_examp.gz`) — English-only version with ~170k Tanaka Corpus example sentences embedded in senses.
+2. Downloads and parses **JMDict examples** (`JMdict_e_examp.gz`) — English-only version with ~32k Tanaka Corpus example sentences embedded in senses.
 3. Downloads and parses **KANJIDIC2** — ~13k kanji: readings, meanings, grade, stroke count, frequency.
 4. Downloads **JLPT vocabulary and kanji lists**.
 5. Creates `shodoukan.sqlite`; inserts all data in transactional bulk operations; pre-computes `freq_score`, `has_common`, `sense_index`, per-language sense counts, and `entry_kanji`; populates the `languages` table from JMDict gloss languages.
@@ -64,7 +64,7 @@ See [docs/schema.md](docs/schema.md) for a full description of the database layo
 | Source | File | Coverage |
 |--------|------|----------|
 | JMDict | `JMdict.gz` — ftp.edrdg.org | ~400k entries, 8 languages, no inline examples |
-| JMDict examples | `JMdict_e_examp.gz` — ftp.edrdg.org | ~170k Tanaka Corpus example sentences (English-only) |
+| JMDict examples | `JMdict_e_examp.gz` — ftp.edrdg.org | ~32k Tanaka Corpus example sentences (English-only) |
 | KANJIDIC2 | `kanjidic2.xml.gz` — edrdg.org | ~13k kanji characters |
 | JLPT vocab/kanji | github.com/Bluskyo/JLPT_Vocabulary | N1–N5 level annotations |
 | KanjiVG | Latest release `-main.zip` — github.com/KanjiVG/kanjivg | ~6,500 SVG stroke-order images |

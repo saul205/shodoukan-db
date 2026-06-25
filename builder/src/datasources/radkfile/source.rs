@@ -19,10 +19,7 @@ pub struct RadkfileSource;
 impl RadkfileSource {
     pub fn fetch_and_parse(&self) -> (Vec<Radical>, Vec<KanjiRadical>) {
         println!("Downloading kradzip.zip...");
-        let bytes = reqwest::blocking::get(KRADZIP_URL)
-            .expect("failed to fetch kradzip.zip")
-            .bytes()
-            .expect("failed to read kradzip.zip bytes");
+        let bytes = crate::http::fetch_bytes(KRADZIP_URL);
 
         let mut archive = ZipArchive::new(Cursor::new(bytes))
             .expect("failed to open kradzip.zip");

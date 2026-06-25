@@ -78,7 +78,7 @@ dependencies = [
 
 [[package]]
 name = "builder"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bzip2 0.4.4",
  "core",
@@ -177,7 +177,7 @@ checksum = "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6"
 
 [[package]]
 name = "core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "rusqlite",
  "serde_json",

@@ -54,8 +54,8 @@ impl Datasource for JMDictSource {
 
     fn fetch(&self) -> Box<dyn std::io::BufRead> {
         println!("Downloading JMDict...");
-        let response = reqwest::blocking::get(self.url()).unwrap();
-        let mut decoder = GzDecoder::new(response);
+        let bytes = crate::http::fetch_bytes(self.url());
+        let mut decoder = GzDecoder::new(bytes.as_slice());
         let mut content = String::new();
         println!("Decompressing JMDict...");
         decoder.read_to_string(&mut content).unwrap();

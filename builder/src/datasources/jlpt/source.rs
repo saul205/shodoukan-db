@@ -12,13 +12,9 @@ pub struct JlptSource;
 impl JlptSource {
     pub fn fetch_vocab(&self) -> Vec<JlptVocabEntry> {
         println!("Downloading JLPT vocabulary...");
-        let text = reqwest::blocking::get(VOCAB_URL)
-            .expect("failed to fetch JLPT vocab")
-            .text()
-            .expect("failed to read JLPT vocab response");
-
+        let bytes = crate::http::fetch_bytes(VOCAB_URL);
         let map: HashMap<String, Vec<VocabItemDto>> =
-            serde_json::from_str(&text).expect("failed to parse JLPT vocab JSON");
+            serde_json::from_slice(&bytes).expect("failed to parse JLPT vocab JSON");
 
         let entries: Vec<JlptVocabEntry> = map
             .into_iter()
@@ -37,13 +33,9 @@ impl JlptSource {
 
     pub fn fetch_kanji(&self) -> Vec<JlptKanjiEntry> {
         println!("Downloading JLPT kanji...");
-        let text = reqwest::blocking::get(KANJI_URL)
-            .expect("failed to fetch JLPT kanji")
-            .text()
-            .expect("failed to read JLPT kanji response");
-
+        let bytes = crate::http::fetch_bytes(KANJI_URL);
         let map: HashMap<String, u8> =
-            serde_json::from_str(&text).expect("failed to parse JLPT kanji JSON");
+            serde_json::from_slice(&bytes).expect("failed to parse JLPT kanji JSON");
 
         let entries: Vec<JlptKanjiEntry> = map
             .into_iter()

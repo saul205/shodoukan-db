@@ -8,6 +8,28 @@ const LINKS_URL: &str = "https://downloads.tatoeba.org/exports/links.tar.bz2";
 const SENTENCES_URL: &str =
     "https://downloads.tatoeba.org/exports/per_language/{lang}/{lang}_sentences.tsv.bz2";
 
+/// Decompress one pass over a `links.tar.bz2` buffer and call `f(src, tgt)` for every pair.
+fn stream_links(bytes: &[u8], mut f: impl FnMut(u64, u64)) {
+    let mut archive = Archive::new(BzDecoder::new(Cursor::new(bytes)));
+    for entry in archive.entries().expect("failed to read links tar") {
+        let entry = entry.expect("failed to read tar entry");
+        if !entry.path().expect("failed to read path").to_string_lossy().contains("links") {
+            continue;
+        }
+        let reader = BufReader::new(entry);
+        for line in reader.lines() {
+            let line = match line { Ok(l) => l, Err(_) => break };
+            let mut parts = line.splitn(2, '\t');
+            let (Some(src), Some(tgt)) = (
+                parts.next().and_then(|s| s.parse::<u64>().ok()),
+                parts.next().and_then(|s| s.parse::<u64>().ok()),
+            ) else { continue };
+            f(src, tgt);
+        }
+        break;
+    }
+}
+
 pub struct TatoebaSource;
 
 impl TatoebaSource {
@@ -26,80 +48,57 @@ impl TatoebaSource {
             .collect();
 
         println!("Downloading Tatoeba sentence links...");
-        let links_bytes = reqwest::blocking::get(LINKS_URL)
-            .expect("failed to fetch Tatoeba links")
-            .bytes()
-            .expect("failed to read Tatoeba links bytes");
+        let links_bytes = crate::http::fetch_bytes(LINKS_URL);
 
-        let bz = BzDecoder::new(Cursor::new(links_bytes));
-        let mut archive = Archive::new(bz);
+        // ── Pass 1: direct translations of our known Japanese sentence IDs ──
+        //
+        // Streams through the compressed bytes without storing the decompressed content.
+        // hop1_to_example: directly-linked sentence id → example_id in our DB
 
-        // translation_ids: known japanese sentence id → set of translation sentence ids
-        let mut translation_ids: HashMap<u64, Vec<u64>> = HashMap::new();
-
-        'outer: for entry in archive.entries().expect("failed to read links tar") {
-            let entry = entry.expect("failed to read tar entry");
-            let path = entry.path().expect("failed to read tar entry path");
-            if !path.to_string_lossy().contains("links") {
-                continue;
+        let mut hop1_to_example: HashMap<u64, i64> = HashMap::new();
+        stream_links(&links_bytes, |src, tgt| {
+            if let Some(&eid) = known.get(&src.to_string()) {
+                hop1_to_example.entry(tgt).or_insert(eid);
+            } else if let Some(&eid) = known.get(&tgt.to_string()) {
+                hop1_to_example.entry(src).or_insert(eid);
             }
+        });
+        println!("  {} direct translation links found", hop1_to_example.len());
 
-            let reader = BufReader::new(entry);
-            for line in reader.lines() {
-                let line = match line {
-                    Ok(l) => l,
-                    Err(_) => break 'outer,
-                };
-                let mut parts = line.splitn(2, '\t');
-                let src: u64 = match parts.next().and_then(|s| s.parse().ok()) {
-                    Some(n) => n,
-                    None => continue,
-                };
-                let tgt: u64 = match parts.next().and_then(|s| s.parse().ok()) {
-                    Some(n) => n,
-                    None => continue,
-                };
-                if known_ids.contains(&src) {
-                    translation_ids.entry(src).or_default().push(tgt);
-                } else if known_ids.contains(&tgt) {
-                    translation_ids.entry(tgt).or_default().push(src);
-                }
-            }
-            break;
-        }
-
-        let target_ids: HashSet<u64> = translation_ids.values().flatten().copied().collect();
-        if target_ids.is_empty() {
+        if hop1_to_example.is_empty() {
             println!("No Tatoeba translation links found for known sentences");
             return Vec::new();
         }
 
-        // id_to_jpn_source: translation sentence id → example_id in our DB
-        let mut id_to_example: HashMap<u64, i64> = HashMap::new();
-        for (src_id, tgt_ids) in &translation_ids {
-            if let Some(&example_id) = known.get(&src_id.to_string()) {
-                for &tgt in tgt_ids {
-                    id_to_example.insert(tgt, example_id);
-                }
+        // ── Pass 2: translations of translations (2-hop) ──
+        //
+        // A second BzDecoder over the same compressed bytes — no re-download.
+        // id_to_example: all reachable sentence ids (hop1 + hop2) → example_id
+
+        let mut id_to_example: HashMap<u64, i64> = hop1_to_example.clone();
+        stream_links(&links_bytes, |src, tgt| {
+            if let Some(&eid) = hop1_to_example.get(&src) {
+                if !known_ids.contains(&tgt) { id_to_example.entry(tgt).or_insert(eid); }
+            } else if let Some(&eid) = hop1_to_example.get(&tgt) {
+                if !known_ids.contains(&src) { id_to_example.entry(src).or_insert(eid); }
             }
-        }
+        });
+
+        let hop2_count = id_to_example.len() - hop1_to_example.len();
+        println!("  {} additional 2-hop translation links found", hop2_count);
+
+        // ── Per-language sentence files ──
 
         let mut results: Vec<TatoebaTranslation> = Vec::new();
 
         for lang in langs {
-            let url = SENTENCES_URL.replace("{lang}", lang);
+            let url = SENTENCES_URL.replace("{lang}", crate::lang::to_tatoeba(lang));
             println!("Downloading Tatoeba {} sentences...", lang);
 
-            let bytes = match reqwest::blocking::get(&url) {
-                Ok(resp) if resp.status().is_success() => {
-                    resp.bytes().expect("failed to read Tatoeba sentence bytes")
-                }
-                Ok(resp) => {
-                    println!("  Skipping {} (HTTP {})", lang, resp.status());
-                    continue;
-                }
-                Err(e) => {
-                    println!("  Skipping {} ({})", lang, e);
+            let bytes = match crate::http::try_fetch_bytes(&url) {
+                Some(b) => b,
+                None => {
+                    println!("  Skipping {} (not available)", lang);
                     continue;
                 }
             };
@@ -121,11 +120,7 @@ impl TatoebaSource {
                 };
 
                 if let Some(&example_id) = id_to_example.get(&id) {
-                    results.push(TatoebaTranslation {
-                        example_id,
-                        lang: lang.clone(),
-                        text,
-                    });
+                    results.push(TatoebaTranslation { example_id, lang: lang.clone(), text });
                     count += 1;
                 }
             }

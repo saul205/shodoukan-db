@@ -138,7 +138,7 @@ Cross-references from one sense to another entry or reading.
 
 ### `examples`
 
-Example sentences linked to a sense. Populated from `JMdict_e_examp.gz` (the English-only JMDict distribution with ~170k Tanaka Corpus sentences). `JMdict.gz` (the multilingual distribution) does not embed inline example sentences.
+Example sentences linked to a sense. Populated from `JMdict_e_examp.gz` (the English-only JMDict distribution with ~32k Tanaka Corpus sentences linked to dictionary entries). `JMdict.gz` (the multilingual distribution) does not embed inline example sentences.
 
 | Column        | Type    | Nullable | Description |
 |---------------|---------|----------|-------------|
