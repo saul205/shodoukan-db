@@ -4,12 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.0.1] — 2026-06-25
+
+### Fixed
+
+- **HTTP reliability** — all datasource downloads now use a shared `reqwest` client (`builder/src/http.rs`) with a 30 s connect timeout, 10 min read timeout, and 3 retries with a 10 s delay between attempts; previously a single slow response from the EDRDG FTP server could hang the build indefinitely
+- **Tatoeba language codes** — JMDict uses ISO 639-2/B bibliographic codes (`fre`, `ger`, `dut`) while Tatoeba uses ISO 639-3 terminological codes (`fra`, `deu`, `nld`); the mismatch caused French, German, and Dutch translations to be silently skipped with 0 results; fixed via `builder/src/lang.rs` (`to_tatoeba` mapping function)
+- **Tatoeba 2-hop traversal** — the Tatoeba step now follows translation-of-translation links; Tanaka Corpus sentences on Tatoeba are Japanese-English pairs, and most other-language translations (Spanish, French, etc.) are added to the English sentence rather than the Japanese one directly; a second streaming pass over the compressed links file resolves these 2-hop paths with no re-download and minimal memory overhead (~148 MB for the compressed buffer)
+
+---
+
 ## [1.0.0] — 2026-06-25
 
 ### Added
 
 **Example sentences (Tanaka Corpus)**
-- Step 2 of the pipeline now fetches and parses `JMdict_e_examp.gz` — the English-only JMDict distribution which embeds ~170k Tanaka Corpus example sentences directly in `<sense>` elements. `JMdict.gz` (the multilingual file) does not include inline examples.
+- Step 2 of the pipeline now fetches and parses `JMdict_e_examp.gz` — the English-only JMDict distribution which embeds ~32k Tanaka Corpus example sentences directly in `<sense>` elements. `JMdict.gz` (the multilingual file) does not include inline examples.
 - `insert_entry_examples` free function in `repository.rs` — given an `Entry` from `JMdict_e_examp.gz`, looks up each sense's `id` by `(entry_id, sense_index)` and inserts into `examples` and `example_sentences`; senses with no examples are skipped silently
 - `pipeline_tests.rs`: `jmdict_examples_inserted_into_db` — verifies that examples and their `jpn`/`eng` sentence pairs are inserted correctly when calling `insert_entry_examples`
 
