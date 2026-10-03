@@ -8,39 +8,37 @@ on:
 permissions:
   contents: write
 
+# Never run two releases at once: they would race on the same tag/asset
+concurrency:
+  group: release-database
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A normal run takes ~7 min; stop hung downloads instead of burning 6 h
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-tags: true
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Build database
-        run: cargo run -p builder --release
 
       # Manual run with a version that has no release yet → v<version> release.
       # Scheduled runs (or manual runs of an already-released version) → data refresh
       # tagged v<version>-db.<YYYYMMDD>, so sources are rebuilt without reusing a tag.
+      # Resolved before the build so a bad version fails in seconds, not after the download.
       - name: Resolve release tag
         id: tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' builder/Cargo.toml | head -n1)
+          if [ -z "$VERSION" ]; then
+            echo "::error::could not read version from builder/Cargo.toml"
+            exit 1
+          fi
           DATE=$(date -u +%Y-%m-%d)
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
              && ! gh release view "v${VERSION}" >/dev/null 2>&1; then
@@ -50,6 +48,15 @@ jobs:
             echo "ref=v${VERSION}-db.${DATE//-/}" >> "$GITHUB_OUTPUT"
             echo "title=v${VERSION} (data refresh ${DATE})" >> "$GITHUB_OUTPUT"
           fi
+
+      # Keyed on toolchain + Cargo.lock; also saved when a later step fails,
+      # so a failed release doesn't force a full recompile next time
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build database
+        run: cargo run -p builder --release
 
       - name: Create or update release
         env:
