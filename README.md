@@ -119,4 +119,7 @@ Applications built on top of `shodoukan.sqlite` only need the released database 
 Automated workflows run on every push and pull request:
 
 - **CI** (`.github/workflows/ci.yml`): `cargo build` + `cargo test`
-- **Release** (`.github/workflows/release.yml`): builds `shodoukan.sqlite` on tagged releases and attaches it as a release asset
+- **Release** (`.github/workflows/release.yml`): rebuilds `shodoukan.sqlite` from the latest sources and attaches it as a release asset
+  - *Manual run* (`workflow_dispatch`) after bumping the version in `builder/Cargo.toml`: creates release `v<version>`
+  - *Monthly run* (1st of the month, 03:00 UTC), or a manual run of an already-released version: creates a data-refresh release `v<version>-db.<YYYYMMDD>`
+  - Re-running on the same day replaces the asset of that day's release

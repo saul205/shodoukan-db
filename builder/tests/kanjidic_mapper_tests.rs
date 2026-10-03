@@ -30,7 +30,26 @@ fn maps_basic_fields() {
     assert_eq!(kanji.grade, Some(1));
     assert_eq!(kanji.stroke_count, 5);
     assert_eq!(kanji.freq, Some(10));
-    assert_eq!(kanji.jlpt, Some(4));
+    assert_eq!(kanji.jlpt, Some(5));
+}
+
+#[test]
+fn converts_old_jlpt_scale_to_n_levels() {
+    let cases = [
+        (Some(1), Some(1)),
+        (Some(2), Some(2)),
+        (Some(3), Some(4)),
+        (Some(4), Some(5)),
+        (None, None),
+    ];
+    for (old, expected) in cases {
+        let dto = CharacterDto {
+            literal: String::from("本"),
+            misc: misc(None, 5, None, old),
+            reading_meaning: None,
+        };
+        assert_eq!(mapper().map_character_to_domain(dto).jlpt, expected, "old level {old:?}");
+    }
 }
 
 #[test]
