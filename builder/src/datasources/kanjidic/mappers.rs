@@ -38,11 +38,23 @@ impl KanjiDicMapper {
             grade: dto.misc.grade,
             stroke_count: dto.misc.stroke_count.into_iter().next().unwrap_or(0),
             freq: dto.misc.freq,
-            jlpt: dto.misc.jlpt,
+            jlpt: dto.misc.jlpt.and_then(old_jlpt_to_n_level),
             on_readings,
             kun_readings,
             meanings,
             nanori,
         }
+    }
+}
+
+/// KANJIDIC2 uses the pre-2010 4-level JLPT scale; convert it to the N1–N5 scale.
+/// Only a fallback: step 8 overwrites it for every kanji in the JLPT list.
+fn old_jlpt_to_n_level(level: u8) -> Option<u8> {
+    match level {
+        1 => Some(1),
+        2 => Some(2),
+        3 => Some(4),
+        4 => Some(5),
+        _ => None,
     }
 }

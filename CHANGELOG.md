@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Kanji JLPT levels** — `kanji.jlpt` mixed KANJIDIC2's pre-2010 4-level scale with the N1–N5 JLPT list, and `KanjiRepository::update_jlpt` kept the lower of the two, so the old value often won (e.g. 電 stored as 4 instead of N5; no kanji had level 5, ~570 of ~2,230 levels were wrong); the JLPT list now always overwrites, and KANJIDIC2 values are converted to the N1–N5 scale (1→N1, 2→N2, 3→N4, 4→N5) and kept only as a fallback for kanji missing from the list (e.g. 分, 身, 無)
+- **Release workflow tags** — scheduled releases reused the version tag on `main`'s HEAD (`v1.0.1`) and failed because that release already existed; the version now comes from `builder/Cargo.toml`, manual runs for an unreleased version create `v<version>`, scheduled runs (and manual runs of an already-released version) create a data-refresh release `v<version>-db.<YYYYMMDD>`, and re-running on the same day replaces that release's asset instead of failing
+
+---
+
 ## [1.0.1] — 2026-06-25
 
 ### Fixed

@@ -168,9 +168,7 @@ impl<'a> KanjiRepository<'a> {
 
     pub fn update_jlpt(&self, literal: &str, level: u8) -> Result<()> {
         self.conn.execute(
-            "UPDATE kanji
-             SET jlpt = CASE WHEN jlpt IS NULL OR ?1 < jlpt THEN ?1 ELSE jlpt END
-             WHERE literal = ?2",
+            "UPDATE kanji SET jlpt = ?1 WHERE literal = ?2",
             params![level, literal],
         )?;
         Ok(())

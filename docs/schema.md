@@ -175,7 +175,7 @@ One row per kanji character.
 | `grade`        | INTEGER | YES      | Joyo grade (1–6 = elementary, 8 = secondary, NULL = non-Joyo) |
 | `stroke_count` | INTEGER | NO       | Number of strokes |
 | `freq`         | INTEGER | YES      | Frequency rank in newspapers (1 = most frequent) |
-| `jlpt`         | INTEGER | YES      | JLPT level 1–5 (set from the JLPT enrichment source) |
+| `jlpt`         | INTEGER | YES      | JLPT level 1–5 (1 = N1, 5 = N5). Taken from the JLPT enrichment source; for kanji not in that list, converted from KANJIDIC2's old 4-level scale (1→N1, 2→N2, 3→N4, 4→N5) |
 | `on_readings`  | TEXT    | NO       | JSON array of on'yomi readings (katakana) |
 | `kun_readings` | TEXT    | NO       | JSON array of kun'yomi readings (hiragana) |
 | `nanori`       | TEXT    | NO       | JSON array of name readings |

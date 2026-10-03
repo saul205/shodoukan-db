@@ -279,7 +279,7 @@ fn update_entry_jlpt_with_kana_key() {
 }
 
 #[test]
-fn update_kanji_jlpt_keeps_minimum() {
+fn update_kanji_jlpt_overwrites() {
     let conn = connection::open_in_memory().unwrap();
     let kanji_repo = KanjiRepository::new(&conn);
 
@@ -303,7 +303,7 @@ fn update_kanji_jlpt_keeps_minimum() {
     let jlpt: Option<u8> = conn
         .query_row("SELECT jlpt FROM kanji WHERE literal = '食'", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(jlpt, Some(3));
+    assert_eq!(jlpt, Some(5));
 }
 
 #[test]
