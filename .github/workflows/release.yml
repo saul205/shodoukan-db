@@ -32,23 +32,37 @@ jobs:
       - name: Build database
         run: cargo run -p builder --release
 
+      # Manual run with a version that has no release yet → v<version> release.
+      # Scheduled runs (or manual runs of an already-released version) → data refresh
+      # tagged v<version>-db.<YYYYMMDD>, so sources are rebuilt without reusing a tag.
       - name: Resolve release tag
         id: tag
-        run: |
-          VERSION=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
-          DATE=$(date -u +%Y-%m-%d)
-          if [ -n "$VERSION" ]; then
-            echo "ref=${VERSION}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=db-${DATE}" >> "$GITHUB_OUTPUT"
-          fi
-          echo "title=Database ${DATE}" >> "$GITHUB_OUTPUT"
-
-      - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.tag.outputs.ref }}" shodoukan.sqlite \
-            --title "${{ steps.tag.outputs.title }}" \
-            --notes "Database build from JMDict and KANJIDIC2." \
-            --latest
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' builder/Cargo.toml | head -n1)
+          DATE=$(date -u +%Y-%m-%d)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && ! gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "ref=v${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "title=v${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=v${VERSION}-db.${DATE//-/}" >> "$GITHUB_OUTPUT"
+            echo "title=v${VERSION} (data refresh ${DATE})" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ steps.tag.outputs.ref }}
+        run: |
+          # A re-run on the same day replaces the asset instead of failing
+          if gh release view "$REF" >/dev/null 2>&1; then
+            gh release upload "$REF" shodoukan.sqlite --clobber
+          else
+            gh release create "$REF" shodoukan.sqlite \
+              --target "${{ github.sha }}" \
+              --title "${{ steps.tag.outputs.title }}" \
+              --notes "Database build from JMDict, KANJIDIC2 and supplementary sources." \
+              --latest
+          fi
